@@ -36,9 +36,9 @@
       <div id="capture-mode" class="mode-panel">
         <div class="capture-controls">
           <button id="start-btn" class="btn-primary">Start Capture</button>
-          <button id="stop-btn" class="btn-primary hidden">Stop &amp; Analyze</button>
+          <button id="stop-btn" class="btn-primary hidden">Stop</button>
           <button id="resume-btn" class="btn-secondary hidden">Resume</button>
-          <button id="analyze-captured-btn" class="btn-primary hidden">Analyze</button>
+          <button id="analyze-captured-btn" class="btn-primary hidden">Analyze with AI</button>
           <button id="clear-btn" class="btn-ghost hidden">Clear</button>
         </div>
         <div id="capture-status" class="capture-status hidden">
@@ -51,6 +51,15 @@
             <span id="live-count" class="badge">0</span>
           </div>
           <div id="live-list" class="live-list"></div>
+        </div>
+        <!-- Raw details table — shown after capture stops, before/without AI -->
+        <div id="capture-details" class="capture-details-section hidden">
+          <div class="capture-details-header">
+            <span class="live-label">Captured domains</span>
+            <span id="capture-details-count" class="badge">0</span>
+            <span class="capture-details-hint">click a row to see exact URIs</span>
+          </div>
+          <div id="capture-details-body"></div>
         </div>
       </div>
 

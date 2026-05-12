@@ -192,7 +192,7 @@ header {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
-/* ── Live discovery ──────────────────────────────────────────────── */
+/* ── Live discovery (chips, shown while capturing) ──────────────────── */
 .live-discovery {
   background: var(--surface-alt2);
   border: 1px solid var(--border-sub);
@@ -232,6 +232,29 @@ header {
   font-family: 'Menlo', 'Consolas', monospace;
   font-size: 10px;
   white-space: nowrap;
+}
+
+/* ── Capture details table (shown after stopping, before/without AI) ────── */
+.capture-details-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.capture-details-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+.capture-details-hint {
+  font-size: 10px;
+  color: var(--text-4);
+  font-style: italic;
+  margin-left: auto;
 }
 
 /* ── Paste mode ────────────────────────────────────────────────────── */

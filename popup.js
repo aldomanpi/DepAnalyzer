@@ -26,27 +26,30 @@ document.getElementById('options-btn').addEventListener('click', () => {
 });
 
 // ── Elements ────────────────────────────────────────────────
-const tabUrlEl       = document.getElementById('tab-url');
-const startBtn       = document.getElementById('start-btn');
-const stopBtn        = document.getElementById('stop-btn');
-const resumeBtn      = document.getElementById('resume-btn');
-const analyzeBtn     = document.getElementById('analyze-captured-btn');
-const clearBtn       = document.getElementById('clear-btn');
-const captureStatus  = document.getElementById('capture-status');
-const liveDiscovery  = document.getElementById('live-discovery');
-const liveCount      = document.getElementById('live-count');
-const liveList       = document.getElementById('live-list');
-const domainsInput   = document.getElementById('domains-input');
-const categBtn       = document.getElementById('categorize-btn');
-const loading        = document.getElementById('loading');
-const loadingTxt     = document.getElementById('loading-text');
-const results        = document.getElementById('results');
-const errorMsg       = document.getElementById('error-msg');
-const summary        = document.getElementById('summary');
-const copyBtn        = document.getElementById('copy-btn');
-const depSects       = document.getElementById('dependency-sections');
-const noiseSects     = document.getElementById('noise-sections');
-const noiseBadge     = document.getElementById('noise-badge');
+const tabUrlEl            = document.getElementById('tab-url');
+const startBtn            = document.getElementById('start-btn');
+const stopBtn             = document.getElementById('stop-btn');
+const resumeBtn           = document.getElementById('resume-btn');
+const analyzeBtn          = document.getElementById('analyze-captured-btn');
+const clearBtn            = document.getElementById('clear-btn');
+const captureStatus       = document.getElementById('capture-status');
+const liveDiscovery       = document.getElementById('live-discovery');
+const liveCount           = document.getElementById('live-count');
+const liveList            = document.getElementById('live-list');
+const captureDetailsEl    = document.getElementById('capture-details');
+const captureDetailsCount = document.getElementById('capture-details-count');
+const captureDetailsBody  = document.getElementById('capture-details-body');
+const domainsInput        = document.getElementById('domains-input');
+const categBtn            = document.getElementById('categorize-btn');
+const loading             = document.getElementById('loading');
+const loadingTxt          = document.getElementById('loading-text');
+const results             = document.getElementById('results');
+const errorMsg            = document.getElementById('error-msg');
+const summary             = document.getElementById('summary');
+const copyBtn             = document.getElementById('copy-btn');
+const depSects            = document.getElementById('dependency-sections');
+const noiseSects          = document.getElementById('noise-sections');
+const noiseBadge          = document.getElementById('noise-badge');
 
 const CATEGORY_ICONS = { first_party: '🏠', cdn: '🔗', noise: '🔇' };
 
@@ -75,6 +78,8 @@ function setCaptureUI(state) {
   analyzeBtn.classList.toggle('hidden', state !== 'stopped');
   clearBtn.classList.toggle('hidden',   state === 'idle');
   captureStatus.classList.toggle('hidden', state !== 'capturing');
+  // Hide live chips when stopped (details table takes over)
+  liveDiscovery.classList.toggle('hidden', state === 'stopped');
 }
 
 // ── Error ──────────────────────────────────────────────────
@@ -87,7 +92,7 @@ function clearError() {
   errorMsg.textContent = '';
 }
 
-// ── Live domain chip ──────────────────────────────────────────
+// ── Live domain chip (during capture) ───────────────────────────
 const knownDomains = new Set();
 
 function addLiveChip(domain) {
@@ -98,6 +103,70 @@ function addLiveChip(domain) {
   chip.textContent = domain;
   liveList.appendChild(chip);
   liveCount.textContent = knownDomains.size;
+}
+
+// ── Raw capture details table ──────────────────────────────────
+function renderCaptureDetails(domains) {
+  if (!domains.length) {
+    captureDetailsEl.classList.add('hidden');
+    return;
+  }
+  captureDetailsCount.textContent = domains.length;
+  captureDetailsBody.innerHTML = '';
+  captureDetailsBody.appendChild(buildCaptureTable(domains));
+  captureDetailsEl.classList.remove('hidden');
+}
+
+function buildCaptureTable(domains) {
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Domain</th>
+        <th>Subdomains seen</th>
+        <th class="right">Requests</th>
+      </tr>
+    </thead>`;
+  const tbody = document.createElement('tbody');
+
+  // Sort by request count descending for easy scanning
+  const sorted = [...domains].sort((a, b) => (b.requestCount || 0) - (a.requestCount || 0));
+
+  for (const { domain, subdomains, requestCount, urls } of sorted) {
+    const tr = document.createElement('tr');
+    tr.className = 'domain-row';
+    const subs = (subdomains || []).length
+      ? subdomains.join(', ')
+      : '<span class="muted">—</span>';
+    tr.innerHTML = `
+      <td class="domain-cell">
+        <span class="expand-icon">▸</span><strong>${esc(domain)}</strong>
+      </td>
+      <td class="sub-cell">${subs}</td>
+      <td class="right">${requestCount || 0}</td>`;
+
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'url-detail hidden';
+    const detailCell = document.createElement('td');
+    detailCell.colSpan = 3;
+    const paths = (urls || []).map(u => {
+      try { const p = new URL(u); return p.host + p.pathname + p.search + p.hash; } catch { return u; }
+    });
+    const listHtml = paths.length
+      ? paths.map(p => `<div class="url-entry">${esc(p)}</div>`).join('')
+      : '<div class="url-entry muted">No paths recorded.</div>';
+    detailCell.innerHTML = `<div class="url-list">${listHtml}</div>`;
+    detailRow.appendChild(detailCell);
+
+    tr.addEventListener('click', () => {
+      const open = tr.classList.toggle('expanded');
+      detailRow.classList.toggle('hidden', !open);
+    });
+    tbody.appendChild(tr);
+    tbody.appendChild(detailRow);
+  }
+  table.appendChild(tbody);
+  return table;
 }
 
 // ── Init: get active tab ───────────────────────────────────────
@@ -117,9 +186,16 @@ async function init() {
   if (!resp) { setCaptureUI('idle'); return; }
 
   for (const { domain } of (resp.domains || [])) addLiveChip(domain);
-  if (resp.domains?.length) liveDiscovery.classList.remove('hidden');
 
-  setCaptureUI(resp.capturing ? 'capturing' : (resp.domains?.length ? 'stopped' : 'idle'));
+  if (resp.capturing) {
+    if (resp.domains?.length) liveDiscovery.classList.remove('hidden');
+    setCaptureUI('capturing');
+  } else if (resp.domains?.length) {
+    setCaptureUI('stopped');
+    renderCaptureDetails(resp.domains);
+  } else {
+    setCaptureUI('idle');
+  }
 }
 
 init().catch(console.error);
@@ -145,20 +221,26 @@ startBtn.addEventListener('click', async () => {
   knownDomains.clear();
   liveList.innerHTML = '';
   liveCount.textContent = '0';
-  liveDiscovery.classList.remove('hidden');
+  captureDetailsEl.classList.add('hidden');
   results.classList.add('hidden');
   await chrome.runtime.sendMessage({ type: 'startCapture', tabId: activeTabId, url: activeTabUrl });
   setCaptureUI('capturing');
+  liveDiscovery.classList.remove('hidden');
 });
 
 stopBtn.addEventListener('click', async () => {
   await chrome.runtime.sendMessage({ type: 'stopCapture', tabId: activeTabId });
+  // Fetch the full capture state (with subdomains + URLs) and render details table
+  const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
   setCaptureUI('stopped');
+  renderCaptureDetails(resp?.domains || []);
 });
 
 resumeBtn.addEventListener('click', async () => {
   await chrome.runtime.sendMessage({ type: 'resumeCapture', tabId: activeTabId });
+  captureDetailsEl.classList.add('hidden');
   setCaptureUI('capturing');
+  liveDiscovery.classList.remove('hidden');
 });
 
 clearBtn.addEventListener('click', async () => {
@@ -167,13 +249,14 @@ clearBtn.addEventListener('click', async () => {
   liveList.innerHTML = '';
   liveCount.textContent = '0';
   liveDiscovery.classList.add('hidden');
+  captureDetailsEl.classList.add('hidden');
   setCaptureUI('idle');
   results.classList.add('hidden');
 });
 
 analyzeBtn.addEventListener('click', () => runAnalyzeCapture());
 
-// ── Analyze captured domains ───────────────────────────────────
+// ── Analyze captured domains with AI ───────────────────────────
 async function runAnalyzeCapture() {
   clearError();
   const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
@@ -195,18 +278,15 @@ function parseDomainList(text) {
   for (const rawLine of text.split('\n')) {
     const line = rawLine.trim();
     if (!line) continue;
-    // Markdown link: [label](https://...)
     const mdM = /^\[.*?\]\((https?:\/\/[^)]+)\)/.exec(line);
     if (mdM) {
       try { const h = new URL(mdM[1]).hostname; if (h) seen.set(h, null); } catch {}
       continue;
     }
-    // Full URL
     if (URL_RE.test(line)) {
       try { const h = new URL(line).hostname; if (h) seen.set(h, null); } catch {}
       continue;
     }
-    // Plain hostname (must contain at least one dot)
     if (HOSTNAME_RE.test(line) && line.includes('.')) seen.set(line, null);
   }
   return [...seen.keys()];
@@ -222,17 +302,12 @@ categBtn.addEventListener('click', async () => {
   const domainMap = {};
   for (const h of hostnames) {
     const reg = getRegisteredDomain(h) || h;
-    if (!domainMap[reg]) {
-      domainMap[reg] = { subdomains: [], requestCount: 0, urls: [] };
-    }
+    if (!domainMap[reg]) domainMap[reg] = { subdomains: [], requestCount: 0, urls: [] };
     domainMap[reg].requestCount++;
     domainMap[reg].urls.push(`https://${h}`);
-    if (h !== reg && !domainMap[reg].subdomains.includes(h)) {
-      domainMap[reg].subdomains.push(h);
-    }
+    if (h !== reg && !domainMap[reg].subdomains.includes(h)) domainMap[reg].subdomains.push(h);
   }
 
-  // Empty targetUrl so all pasted domains are treated as third-party
   await runClassify(domainMap, '');
 });
 
@@ -354,18 +429,14 @@ function renderResults(data) {
   for (const cat of orderedCats) {
     const items = grouped[cat];
     if (!items) continue;
-    depSects.appendChild(
-      buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false),
-    );
+    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false));
   }
 
   let noiseCount = 0;
   for (const cat of Object.keys(noisyGrouped)) {
     const items = noisyGrouped[cat];
     noiseCount += items.length;
-    noiseSects.appendChild(
-      buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true),
-    );
+    noiseSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true));
   }
   noiseBadge.textContent = noiseCount;
 
