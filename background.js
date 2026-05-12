@@ -10,35 +10,18 @@ Classify each domain into exactly one of these two categories:
   - Advertising and tracking (doubleclick.net, googlesyndication.com, facebook.net, criteo.com, taboola.com, outbrain.com, etc.)
   - Social media embeds/pixels (facebook.com, twitter.com, x.com, linkedin.com, instagram.com, tiktok.com, pinterest.com, etc.)
   - Public CDN frameworks hosting open-source JS/CSS (cdnjs.cloudflare.com, jsdelivr.net, unpkg.com, bootstrapcdn.com, etc.)
-  - Ubiquitous infrastructure from major tech companies — any domain that is clearly a property of Google, Microsoft, Amazon, Apple, Cloudflare, Akamai, Fastly, or a similar hyperscaler, serving generic infrastructure such as CDN delivery, APIs, content hosting, or authentication. This applies to the entire family of domains owned by these companies, not just known examples. Known examples include: googleapis.com, gstatic.com, googleusercontent.com, google.com (subdomains), microsoft.com, live.com, windows.net, amazonaws.com, cloudfront.net, azureedge.net, azurefd.net, fastly.net, akamaized.net, akamai.net — but if you encounter an unfamiliar domain that is clearly part of one of these companies\' infrastructure, classify it as noise too.
+  - Ubiquitous infrastructure from major tech companies — any domain that is clearly a property of Google, Microsoft, Amazon, Apple, Cloudflare, Akamai, Fastly, or a similar hyperscaler, serving generic infrastructure such as CDN delivery, APIs, content hosting, or authentication. This applies to the entire family of domains owned by these companies, not just known examples. Known examples include: googleapis.com, gstatic.com, googleusercontent.com, google.com (subdomains), microsoft.com, live.com, windows.net, amazonaws.com, cloudfront.net, azureedge.net, azurefd.net, fastly.net, akamaized.net, akamai.net — but if you encounter an unfamiliar domain that is clearly part of one of these companies' infrastructure, classify it as noise too.
   - Error/performance monitoring (sentry.io, datadoghq.com, newrelic.com, bugsnag.com, rollbar.com, etc.)
   - Live chat and customer support widgets (intercom.io, drift.com, crisp.chat, tawk.to, zendesk.com, etc.)
   - Consent management platforms (onetrust.com, cookiebot.com, trustarc.com, usercentrics.com, etc.)
 
 - cdn: A domain whose absence would break or visibly degrade the site's user experience — something a user would notice if blocked. This includes the site's own CDN/hosting, payment processors, authentication providers, maps APIs, video hosting, fonts, or any third-party service that delivers visible content or enables core functionality.
 
-Critical rule: classify by what the domain IS (e.g. an analytics service), not by who owns it or who the target site is. google-analytics.com is always noise even if the target site is google.com.
-
-If you are unsure what a domain is, call lookup_domain to fetch a brief description of it first. Use it for any domain you don't recognise.
-
-When you have classified every domain, call classify_domains with the complete results.`;
-
-const LOOKUP_TOOL = {
-  name: 'lookup_domain',
-  description: 'Fetch the homepage of a domain and return its title and meta description so you can determine what the service is.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      domain: { type: 'string', description: "Registered domain to look up, e.g. 'example.com'" },
-    },
-    required: ['domain'],
-  },
-  cache_control: { type: 'ephemeral' },
-};
+Critical rule: classify by what the domain IS (e.g. an analytics service), not by who owns it or who the target site is. google-analytics.com is always noise even if the target site is google.com.`;
 
 const CLASSIFY_TOOL = {
   name: 'classify_domains',
-  description: 'Submit the final cdn/noise classification for all domains once you have finished any lookups.',
+  description: 'Submit the final cdn/noise classification for all domains.',
   input_schema: {
     type: 'object',
     properties: {
@@ -231,11 +214,11 @@ function sendProgress(tabId, status) {
   chrome.runtime.sendMessage({ type: 'progress', tabId, status }).catch(() => {});
 }
 
-// --- Domain lookup (AI tool implementation) ---
+// --- Domain lookup (fetched before the AI call, no API cost) ---
 async function fetchDomainSummary(domain) {
   try {
     const resp = await fetch(`https://${domain}`, {
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DepAnalyzer/1.0)' },
     });
     const text = await resp.text();
@@ -245,88 +228,78 @@ async function fetchDomainSummary(domain) {
       text.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
     const title = titleM ? titleM[1].replace(/<[^>]+>/g, '').trim() : '';
     const desc  = descM  ? descM[1].trim() : '';
-    if (title || desc) return `Title: ${title}\nDescription: ${desc}`;
+    if (title || desc) return `${title}${desc ? ` — ${desc}` : ''}`;
   } catch {}
-  // Fallback: DuckDuckGo Instant Answer API
+  // Fallback: DuckDuckGo Instant Answer
   try {
     const resp = await fetch(
       `https://api.duckduckgo.com/?q=${encodeURIComponent(domain)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`,
-      { signal: AbortSignal.timeout(6000) },
+      { signal: AbortSignal.timeout(5000) },
     );
     const data = await resp.json();
     const h = (data.Heading      || '').trim();
     const a = (data.AbstractText || '').trim();
-    if (h || a) return `Title: ${h}\nDescription: ${a}`;
+    if (h || a) return `${h}${a ? ` — ${a}` : ''}`;
   } catch {}
-  return `Could not retrieve information for ${domain}.`;
+  return '';
 }
 
-// --- AI classification ---
+// --- AI classification (single API call with pre-fetched summaries) ---
 async function classifyWithAI(domains, targetUrl, apiKey, tabId) {
   if (!domains.length) return {};
-  const domainList = domains.map(d => `- ${d}`).join('\n');
-  let messages = [{
-    role: 'user',
-    content: `Target site: ${targetUrl || '(unknown)'}\n\nClassify these third-party domains:\n${domainList}`,
-  }];
 
-  while (true) {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        tools: [LOOKUP_TOOL, CLASSIFY_TOOL],
-        tool_choice: { type: 'any' },
-        messages,
-      }),
-    });
+  // Fetch all summaries in parallel — free, no AI tokens consumed
+  sendProgress(tabId, `Looking up ${domains.length} domain(s)…`);
+  const settled = await Promise.allSettled(
+    domains.map(d => fetchDomainSummary(d).then(s => ({ domain: d, summary: s }))),
+  );
 
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: { message: `HTTP ${resp.status}` } }));
-      throw new Error(err.error?.message || `Anthropic API error ${resp.status}`);
-    }
+  const domainLines = settled.map(r => {
+    if (r.status === 'rejected' || !r.value) return null;
+    const { domain, summary } = r.value;
+    const brief = summary.replace(/\s+/g, ' ').slice(0, 250);
+    return brief ? `- ${domain}: ${brief}` : `- ${domain}`;
+  }).filter(Boolean).join('\n') ||
+    domains.map(d => `- ${d}`).join('\n');
 
-    const data = await resp.json();
-    messages.push({ role: 'assistant', content: data.content });
+  sendProgress(tabId, `Classifying ${domains.length} domain(s)…`);
 
-    const toolResults = [];
-    let final = null;
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      tools: [CLASSIFY_TOOL],
+      tool_choice: { type: 'tool', name: 'classify_domains' },
+      messages: [{
+        role: 'user',
+        content: `Target site: ${targetUrl || '(unknown)'}\n\nClassify these third-party domains:\n${domainLines}`,
+      }],
+    }),
+  });
 
-    for (const block of data.content) {
-      if (block.type !== 'tool_use') continue;
-      if (block.name === 'classify_domains') {
-        final = block.input.classifications || [];
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Done.' });
-      } else if (block.name === 'lookup_domain') {
-        const domain = block.input.domain || '';
-        sendProgress(tabId, `Looking up ${domain}…`);
-        const summary = await fetchDomainSummary(domain);
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: summary });
-      }
-    }
-
-    if (final !== null) {
-      const out = {};
-      for (const e of final) {
-        if (e.domain) out[e.domain] = { category: e.category === 'noise' ? 'noise' : 'cdn', impact: e.impact || '' };
-      }
-      return out;
-    }
-    if (toolResults.length) {
-      messages.push({ role: 'user', content: toolResults });
-    } else {
-      return Object.fromEntries(domains.map(d => [d, { category: 'cdn', impact: '' }]));
-    }
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: { message: `HTTP ${resp.status}` } }));
+    throw new Error(err.error?.message || `Anthropic API error ${resp.status}`);
   }
+
+  const data = await resp.json();
+  const block = data.content?.find(b => b.type === 'tool_use' && b.name === 'classify_domains');
+  if (!block) return Object.fromEntries(domains.map(d => [d, { category: 'cdn', impact: '' }]));
+
+  const out = {};
+  for (const e of block.input.classifications || []) {
+    if (e.domain) out[e.domain] = { category: e.category === 'noise' ? 'noise' : 'cdn', impact: e.impact || '' };
+  }
+  return out;
 }
 
 const CATEGORY_LABELS = { first_party: 'First Party', cdn: 'CDN / Dependencies', noise: 'Noise' };
