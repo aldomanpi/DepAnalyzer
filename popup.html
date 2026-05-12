@@ -21,19 +21,14 @@
         <p class="subtitle" id="tab-url">Discover and categorize website dependencies</p>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" id="options-btn" title="Options">⚙</button>
+        <button class="icon-btn" id="options-btn" title="Options">&#9881;</button>
         <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode"></button>
       </div>
     </header>
 
     <section class="input-card">
-      <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="capture">Current Tab</button>
-        <button class="mode-tab" data-mode="paste">Paste List</button>
-      </div>
-
-      <!-- Capture mode -->
-      <div id="capture-mode" class="mode-panel">
+      <!-- Capture mode (primary, always visible) -->
+      <div id="capture-mode">
         <div class="capture-controls">
           <button id="start-btn" class="btn-primary">Start Capture</button>
           <button id="stop-btn" class="btn-primary hidden">Stop</button>
@@ -63,12 +58,17 @@
         </div>
       </div>
 
-      <!-- Paste mode -->
-      <div id="paste-mode" class="mode-panel hidden">
+      <!-- Manual URL categorization (secondary, collapsible) -->
+      <div class="manual-entry-row">
+        <button class="manual-entry-toggle" id="manual-toggle-btn" aria-expanded="false">
+          <span class="manual-plus">+</span>Categorize URL list
+        </button>
+      </div>
+      <div id="manual-entry-panel" class="manual-entry-panel hidden">
         <div class="paste-row">
           <textarea
             id="domains-input"
-            rows="6"
+            rows="5"
             placeholder="One domain per line — plain hostnames, full URLs, or markdown links like [host](https://host)"
             spellcheck="false"
           ></textarea>

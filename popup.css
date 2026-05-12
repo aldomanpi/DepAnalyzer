@@ -1,6 +1,6 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Colour tokens ──────────────────────────────────────────────────── */
+/* ── Colour tokens ────────────────────────────────────────────────────────────────── */
 :root {
   --bg:            #f4f6f9;
   --surface:       #ffffff;
@@ -49,7 +49,7 @@
   --capture-dot:   #4ade80;
 }
 
-/* ── Base ───────────────────────────────────────────────────────────── */
+/* ── Base ──────────────────────────────────────────────────────────────────────── */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
@@ -67,7 +67,7 @@ body {
   overflow-y: auto;
 }
 
-/* ── Header ────────────────────────────────────────────────────────── */
+/* ── Header ──────────────────────────────────────────────────────────────────── */
 header {
   display: flex;
   align-items: flex-start;
@@ -100,7 +100,7 @@ header {
 }
 .icon-btn:hover, .theme-toggle:hover { background: var(--surface-alt); }
 
-/* ── Input card ───────────────────────────────────────────────────── */
+/* ── Input card ─────────────────────────────────────────────────────────────────── */
 .input-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -109,28 +109,7 @@ header {
   margin-bottom: 10px;
 }
 
-/* ── Mode tabs ─────────────────────────────────────────────────────── */
-.mode-tabs {
-  display: flex;
-  margin-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
-.mode-tab {
-  padding: 5px 14px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-  transition: color .15s, border-color .15s;
-}
-.mode-tab:hover { color: var(--text-2); }
-.mode-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-/* ── Buttons ───────────────────────────────────────────────────────── */
+/* ── Buttons ───────────────────────────────────────────────────────────────────── */
 .btn-primary {
   padding: 7px 16px;
   background: var(--accent);
@@ -173,7 +152,7 @@ header {
 }
 .btn-ghost:hover { background: var(--surface-alt); color: var(--text-2); }
 
-/* ── Capture controls ────────────────────────────────────────────── */
+/* ── Capture controls ──────────────────────────────────────────────────────────────── */
 .capture-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .capture-status {
   display: flex;
@@ -192,7 +171,7 @@ header {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
-/* ── Live discovery (chips, shown while capturing) ──────────────────── */
+/* ── Live discovery (chips, shown while capturing) ───────────────────────────────────── */
 .live-discovery {
   background: var(--surface-alt2);
   border: 1px solid var(--border-sub);
@@ -234,7 +213,7 @@ header {
   white-space: nowrap;
 }
 
-/* ── Capture details table (shown after stopping, before/without AI) ────── */
+/* ── Capture details table (shown after stopping, before/without AI) ────────────────────── */
 .capture-details-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -257,7 +236,43 @@ header {
   margin-left: auto;
 }
 
-/* ── Paste mode ────────────────────────────────────────────────────── */
+/* ── Manual entry toggle ─────────────────────────────────────────────────────────────── */
+.manual-entry-row {
+  display: flex;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.manual-entry-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-3);
+  transition: color .15s, background .15s, border-color .15s;
+}
+.manual-entry-toggle:hover,
+.manual-entry-toggle.open {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.manual-plus {
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1;
+  display: inline-block;
+  transition: transform .2s;
+}
+.manual-entry-toggle.open .manual-plus { transform: rotate(45deg); }
+.manual-entry-panel { margin-top: 8px; }
+
+/* ── URL list input (manual entry panel) ──────────────────────────────────────────────── */
 .paste-row { display: flex; gap: 10px; align-items: flex-start; }
 #domains-input {
   flex: 1;
@@ -280,7 +295,7 @@ header {
   color: var(--text-4);
 }
 
-/* ── Error ──────────────────────────────────────────────────────────── */
+/* ── Error ──────────────────────────────────────────────────────────────────────── */
 .error-msg {
   margin-top: 8px;
   padding: 7px 10px;
@@ -291,7 +306,7 @@ header {
   font-size: 12px;
 }
 
-/* ── Loading ────────────────────────────────────────────────────────── */
+/* ── Loading ──────────────────────────────────────────────────────────────────────── */
 .loading {
   display: flex;
   align-items: center;
@@ -310,7 +325,7 @@ header {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Results header ────────────────────────────────────────────────── */
+/* ── Results header ────────────────────────────────────────────────────────────────── */
 .results-header {
   display: flex;
   align-items: center;
@@ -321,7 +336,7 @@ header {
 }
 #summary { color: var(--text-2); font-size: 12px; }
 
-/* ── Category sections ─────────────────────────────────────────────── */
+/* ── Category sections ─────────────────────────────────────────────────────────────────── */
 .category-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -355,7 +370,7 @@ header {
 }
 .badge-noise { background: var(--text-4); }
 
-/* ── Tables ─────────────────────────────────────────────────────────── */
+/* ── Tables ────────────────────────────────────────────────────────────────────────── */
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 thead th {
   padding: 6px 12px;
@@ -415,7 +430,7 @@ tbody td { padding: 7px 12px; vertical-align: top; }
 .right { text-align: right; color: var(--text-4); }
 .muted { color: var(--text-5); }
 
-/* ── Noise section ───────────────────────────────────────────────────── */
+/* ── Noise section ──────────────────────────────────────────────────────────────────────── */
 .noise-details {
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -448,5 +463,5 @@ details[open] > .noise-summary::before { transform: rotate(90deg); }
 .noise table { opacity: .75; }
 #noise-sections { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
-/* ── Utility ─────────────────────────────────────────────────────────── */
+/* ── Utility ───────────────────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
