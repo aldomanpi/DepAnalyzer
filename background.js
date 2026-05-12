@@ -4,20 +4,27 @@ const SYSTEM_PROMPT = `You are helping an internet filtering organization catego
 
 Classify each domain into exactly one of these two categories:
 
-- noise: Any service whose removal would not break or visibly degrade the site's user experience — if a user would not notice the domain being blocked, it is noise. Exception: domains so ubiquitous that every organization's standard filter already has a policy for them are also noise even if blocking them does affect UX — this covers public open-source CDNs and widely-deployed infrastructure from major tech companies (Google, Microsoft, Amazon, etc.). Classify as noise regardless of who owns the domain or who the target site is. This includes:
+- noise: A service that is clearly optional from the user's perspective — blocking it would not break or visibly degrade the site. This applies regardless of who owns the domain or what site is being analyzed. Examples:
   - Analytics and telemetry (google-analytics.com, googletagmanager.com, hotjar.com, mixpanel.com, segment.io, amplitude.com, clarity.ms, heap.io, etc.)
-  - A/B testing, experimentation, and feature flagging (growthbook.io, optimizely.com, vwo.com, launchdarkly.com, split.io, statsig.com, etc.)
-  - Advertising and tracking (doubleclick.net, googlesyndication.com, facebook.net, criteo.com, taboola.com, outbrain.com, etc.)
-  - Social media embeds/pixels (facebook.com, twitter.com, x.com, linkedin.com, instagram.com, tiktok.com, pinterest.com, etc.)
-  - Public CDN frameworks hosting open-source JS/CSS (cdnjs.cloudflare.com, jsdelivr.net, unpkg.com, bootstrapcdn.com, etc.)
-  - Ubiquitous infrastructure from major tech companies — any domain that is clearly a property of Google, Microsoft, Amazon, Apple, Cloudflare, Akamai, Fastly, or a similar hyperscaler, serving generic infrastructure such as CDN delivery, APIs, content hosting, or authentication. This applies to the entire family of domains owned by these companies, not just known examples. Known examples include: googleapis.com, gstatic.com, googleusercontent.com, google.com (subdomains), microsoft.com, live.com, windows.net, amazonaws.com, cloudfront.net, azureedge.net, azurefd.net, fastly.net, akamaized.net, akamai.net — but if you encounter an unfamiliar domain that is clearly part of one of these companies' infrastructure, classify it as noise too.
-  - Error/performance monitoring (sentry.io, datadoghq.com, newrelic.com, bugsnag.com, rollbar.com, etc.)
-  - Live chat and customer support widgets (intercom.io, drift.com, crisp.chat, tawk.to, zendesk.com, etc.)
-  - Consent management platforms (onetrust.com, cookiebot.com, trustarc.com, usercentrics.com, etc.)
+  - A/B testing and feature flagging (optimizely.com, vwo.com, launchdarkly.com, growthbook.io, statsig.com, etc.)
+  - Advertising and tracking pixels (doubleclick.net, googlesyndication.com, facebook.net, criteo.com, taboola.com, etc.)
+  - Social media embeds and pixels (twitter.com, x.com, linkedin.com, instagram.com, tiktok.com, pinterest.com, etc.)
+  - Public open-source CDN frameworks (cdnjs.cloudflare.com, jsdelivr.net, unpkg.com, bootstrapcdn.com, etc.)
+  - Generic infrastructure from hyperscalers serving analytics/ads/tracking (googleapis.com, gstatic.com, cloudfront.net, amazonaws.com, fastly.net, akamaized.net, azureedge.net, etc.) — but only when the specific subdomain/usage is for analytics or optional services, not for delivering the site's own content
+  - Error monitoring (sentry.io, datadoghq.com, newrelic.com, bugsnag.com, rollbar.com)
+  - Chat widgets (intercom.io, drift.com, crisp.chat, tawk.to, zendesk.com)
+  - Consent management (onetrust.com, cookiebot.com, trustarc.com)
 
-- cdn: A domain whose absence would break or visibly degrade the site's user experience — something a user would notice if blocked. This includes the site's own CDN/hosting, payment processors, authentication providers, maps APIs, video hosting, fonts, or any third-party service that delivers visible content or enables core functionality.
+- cdn: A domain that delivers visible content or enables core functionality — blocking it would break or noticeably degrade the user experience. This includes:
+  - The target site's own CDN, media hosting, asset servers, URL shorteners, or redirect domains (even when hosted under a different domain name)
+  - Payment processors, authentication providers, maps, video hosting, fonts
+  - Any third-party service the site's core functionality visibly depends on
 
-Critical rule: classify by what the domain IS (e.g. an analytics service), not by who owns it or who the target site is. google-analytics.com is always noise even if the target site is google.com.`;
+Critical rules:
+1. Classify by what the domain IS, not by who owns it. google-analytics.com is always noise even on google.com.
+2. WHEN UNCERTAIN, choose 'cdn'. Only choose 'noise' when you are confident the domain serves an optional, invisible purpose.
+3. Domains whose names share obvious branding with the target site are almost certainly proprietary infrastructure — classify as 'cdn'.
+4. A domain delivering the site's own content, images, videos, or user data is always 'cdn', even if it looks like a generic CDN name.`;
 
 const CLASSIFY_TOOL = {
   name: 'classify_domains',
@@ -123,7 +130,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     let targetRegistered = '';
     try {
       const u = (msg.url || '').startsWith('http') ? msg.url : `https://${msg.url}`;
-      targetRegistered = getRegisteredDomain(new URL(u).hostname);
+      targetRegistered = getRegisteredDomain(new URL(u).hostname) || '';
     } catch {}
     captures.set(tabId, {
       capturing: true,
@@ -152,11 +159,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'getCapture') {
     const s = captures.get(tabId);
-    if (!s) { sendResponse({ domains: [], capturing: false, targetUrl: '' }); return; }
+    if (!s) { sendResponse({ domains: [], capturing: false, targetUrl: '', targetRegistered: '' }); return; }
     sendResponse({
       domains: [...s.domains.entries()].map(([d, info]) => ({ domain: d, ...info })),
       capturing: s.capturing,
       targetUrl: s.targetUrl,
+      targetRegistered: s.targetRegistered,
     });
     return;
   }
@@ -169,7 +177,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'classify') {
-    classify(msg.domainMap, msg.targetUrl, msg.tabId)
+    classify(msg.domainMap, msg.targetUrl, msg.tabId, msg.targetRegistered || '')
       .then(result => sendResponse({ ok: true, ...result }))
       .catch(e => sendResponse({ error: e.message }));
     return true; // keep channel open for async response
@@ -216,6 +224,18 @@ function sendProgress(tabId, status) {
 
 // --- Domain lookup (fetched before the AI call, no API cost) ---
 async function fetchDomainSummary(domain) {
+  // Try DuckDuckGo first — more reliable than raw HTML scraping for service identification
+  try {
+    const resp = await fetch(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(domain)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    const data = await resp.json();
+    const h = (data.Heading      || '').trim();
+    const a = (data.AbstractText || '').trim();
+    if (h || a) return `${h}${a ? ` — ${a}` : ''}`;
+  } catch {}
+  // Fallback: parse title + meta description from homepage
   try {
     const resp = await fetch(`https://${domain}`, {
       signal: AbortSignal.timeout(5000),
@@ -230,22 +250,11 @@ async function fetchDomainSummary(domain) {
     const desc  = descM  ? descM[1].trim() : '';
     if (title || desc) return `${title}${desc ? ` — ${desc}` : ''}`;
   } catch {}
-  // Fallback: DuckDuckGo Instant Answer
-  try {
-    const resp = await fetch(
-      `https://api.duckduckgo.com/?q=${encodeURIComponent(domain)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    const data = await resp.json();
-    const h = (data.Heading      || '').trim();
-    const a = (data.AbstractText || '').trim();
-    if (h || a) return `${h}${a ? ` — ${a}` : ''}`;
-  } catch {}
   return '';
 }
 
 // --- AI classification (single API call with pre-fetched summaries) ---
-async function classifyWithAI(domains, targetUrl, apiKey, tabId) {
+async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabId) {
   if (!domains.length) return {};
 
   // Fetch all summaries in parallel — free, no AI tokens consumed
@@ -255,12 +264,15 @@ async function classifyWithAI(domains, targetUrl, apiKey, tabId) {
   );
 
   const domainLines = settled.map(r => {
-    if (r.status === 'rejected' || !r.value) return null;
+    if (r.status === 'rejected') return null;
     const { domain, summary } = r.value;
-    const brief = summary.replace(/\s+/g, ' ').slice(0, 250);
+    const brief = (summary || '').replace(/\s+/g, ' ').slice(0, 250);
     return brief ? `- ${domain}: ${brief}` : `- ${domain}`;
-  }).filter(Boolean).join('\n') ||
-    domains.map(d => `- ${d}`).join('\n');
+  }).filter(Boolean).join('\n') || domains.map(d => `- ${d}`).join('\n');
+
+  const targetHint = targetRegistered
+    ? `\nNote: the target site's registered domain is "${targetRegistered}". Domains sharing its brand name or clearly serving as its infrastructure should be classified as cdn.`
+    : '';
 
   sendProgress(tabId, `Classifying ${domains.length} domain(s)…`);
 
@@ -281,7 +293,7 @@ async function classifyWithAI(domains, targetUrl, apiKey, tabId) {
       tool_choice: { type: 'tool', name: 'classify_domains' },
       messages: [{
         role: 'user',
-        content: `Target site: ${targetUrl || '(unknown)'}\n\nClassify these third-party domains:\n${domainLines}`,
+        content: `Target site: ${targetUrl || '(unknown)'}${targetHint}\n\nClassify these third-party domains:\n${domainLines}`,
       }],
     }),
   });
@@ -304,18 +316,22 @@ async function classifyWithAI(domains, targetUrl, apiKey, tabId) {
 
 const CATEGORY_LABELS = { first_party: 'First Party', cdn: 'CDN / Dependencies', noise: 'Noise' };
 
-async function classify(domainMap, targetUrl, tabId) {
+async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '') {
   const apiKey = await getApiKey();
   if (!apiKey) throw new Error('API key not configured — open extension Options to set it.');
 
   const cache = await getCache();
-  let targetRegistered = '';
-  try {
-    if (targetUrl) {
-      const u = targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`;
-      targetRegistered = getRegisteredDomain(new URL(u).hostname);
-    }
-  } catch {}
+
+  // Prefer the stored targetRegistered (computed at capture time); fall back to derivation
+  let targetRegistered = providedTargetRegistered;
+  if (!targetRegistered) {
+    try {
+      if (targetUrl) {
+        const u = targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`;
+        targetRegistered = getRegisteredDomain(new URL(u).hostname) || '';
+      }
+    } catch {}
+  }
 
   const allDomains = Object.keys(domainMap);
   const thirdParty = allDomains.filter(d => d !== targetRegistered);
@@ -332,7 +348,7 @@ async function classify(domainMap, targetUrl, tabId) {
 
   let aiResults = {};
   if (uncached.length) {
-    aiResults = await classifyWithAI(uncached, targetUrl, apiKey, tabId);
+    aiResults = await classifyWithAI(uncached, targetUrl, targetRegistered, apiKey, tabId);
     await saveToCache(
       Object.entries(aiResults).map(([domain, { category, impact }]) => ({ domain, category, impact })),
     );
@@ -345,7 +361,7 @@ async function classify(domainMap, targetUrl, tabId) {
 
   const results = [];
   for (const [domain, info] of Object.entries(domainMap)) {
-    const isFirstParty = domain === targetRegistered;
+    const isFirstParty = targetRegistered && domain === targetRegistered;
     const cat    = isFirstParty ? 'first_party' : (allCats[domain]?.category || 'cdn');
     const impact = isFirstParty ? '' : (allCats[domain]?.impact || '');
     results.push({

@@ -1,6 +1,6 @@
 import { getRegisteredDomain } from './lib/domainUtils.js';
 
-// ── Theme ──────────────────────────────────────────────────────────
+// ── Theme ──────────────────────────────────────────────────
 const themeToggle = document.getElementById('theme-toggle');
 
 function applyTheme(theme) {
@@ -25,7 +25,7 @@ document.getElementById('options-btn').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
-// ── Elements ────────────────────────────────────────────────────────
+// ── Elements ────────────────────────────────────────────────
 const tabUrlEl            = document.getElementById('tab-url');
 const startBtn            = document.getElementById('start-btn');
 const stopBtn             = document.getElementById('stop-btn');
@@ -57,7 +57,7 @@ let activeTabId  = null;
 let activeTabUrl = '';
 let whitelistDomains = [];
 
-// ── Manual entry toggle ──────────────────────────────────────────
+// ── Manual entry toggle ──────────────────────────────────────
 document.getElementById('manual-toggle-btn').addEventListener('click', () => {
   const panel = document.getElementById('manual-entry-panel');
   const btn   = document.getElementById('manual-toggle-btn');
@@ -68,7 +68,7 @@ document.getElementById('manual-toggle-btn').addEventListener('click', () => {
   if (opening) clearError();
 });
 
-// ── Capture state UI ───────────────────────────────────────────────
+// ── Capture state UI ───────────────────────────────────────────
 function setCaptureUI(state) {
   // state: 'idle' | 'capturing' | 'stopped'
   startBtn.classList.toggle('hidden',   state !== 'idle');
@@ -81,7 +81,7 @@ function setCaptureUI(state) {
   liveDiscovery.classList.toggle('hidden', state === 'stopped');
 }
 
-// ── Error ────────────────────────────────────────────────────────
+// ── Error ──────────────────────────────────────────────────
 function showError(msg) {
   errorMsg.textContent = msg;
   errorMsg.classList.remove('hidden');
@@ -91,7 +91,7 @@ function clearError() {
   errorMsg.textContent = '';
 }
 
-// ── Live domain chip (during capture) ───────────────────────────────────
+// ── Live domain chip (during capture) ───────────────────────────
 const knownDomains = new Set();
 
 function addLiveChip(domain) {
@@ -104,7 +104,7 @@ function addLiveChip(domain) {
   liveCount.textContent = knownDomains.size;
 }
 
-// ── Raw capture details table ────────────────────────────────────────────
+// ── Raw capture details table ──────────────────────────────────
 function renderCaptureDetails(domains) {
   if (!domains.length) {
     captureDetailsEl.classList.add('hidden');
@@ -168,7 +168,7 @@ function buildCaptureTable(domains) {
   return table;
 }
 
-// ── Init: get active tab ───────────────────────────────────────────────
+// ── Init: get active tab ───────────────────────────────────────
 async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) { setCaptureUI('idle'); return; }
@@ -199,7 +199,7 @@ async function init() {
 
 init().catch(console.error);
 
-// ── Background messages ──────────────────────────────────────────────
+// ── Background messages ────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.tabId !== activeTabId) return;
   if (msg.type === 'newDomain') {
@@ -211,7 +211,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
-// ── Capture buttons ───────────────────────────────────────────────
+// ── Capture buttons ───────────────────────────────────────────
 startBtn.addEventListener('click', async () => {
   clearError();
   if (!activeTabUrl || /^(chrome|edge|about):/.test(activeTabUrl)) {
@@ -255,7 +255,7 @@ clearBtn.addEventListener('click', async () => {
 
 analyzeBtn.addEventListener('click', () => runAnalyzeCapture());
 
-// ── Analyze captured domains with AI ───────────────────────────────────
+// ── Analyze captured domains with AI ───────────────────────────
 async function runAnalyzeCapture() {
   clearError();
   const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
@@ -265,10 +265,11 @@ async function runAnalyzeCapture() {
   for (const { domain, subdomains, requestCount, urls } of resp.domains) {
     domainMap[domain] = { subdomains, requestCount, urls };
   }
-  await runClassify(domainMap, resp.targetUrl || activeTabUrl);
+  // Pass the stored targetRegistered directly — avoids URL re-parsing errors
+  await runClassify(domainMap, resp.targetUrl || activeTabUrl, resp.targetRegistered || '');
 }
 
-// ── Manual URL categorization ─────────────────────────────────────────────
+// ── Manual URL categorization ─────────────────────────────────
 const URL_RE      = /^https?:\/\//i;
 const HOSTNAME_RE = /^[a-zA-Z0-9]([a-zA-Z0-9.\-]*[a-zA-Z0-9])?$/;
 
@@ -307,11 +308,11 @@ categBtn.addEventListener('click', async () => {
     if (h !== reg && !domainMap[reg].subdomains.includes(h)) domainMap[reg].subdomains.push(h);
   }
 
-  await runClassify(domainMap, '');
+  await runClassify(domainMap, '', '');
 });
 
-// ── Common classify runner ───────────────────────────────────────────────
-async function runClassify(domainMap, targetUrl) {
+// ── Common classify runner ─────────────────────────────────────
+async function runClassify(domainMap, targetUrl, targetRegistered = '') {
   results.classList.add('hidden');
   loading.classList.remove('hidden');
   loadingTxt.textContent = 'Starting…';
@@ -321,6 +322,7 @@ async function runClassify(domainMap, targetUrl) {
       type: 'classify',
       domainMap,
       targetUrl,
+      targetRegistered,
       tabId: activeTabId,
     });
     if (!resp) { showError('No response from background worker.'); return; }
@@ -333,7 +335,7 @@ async function runClassify(domainMap, targetUrl) {
   }
 }
 
-// ── Results rendering ──────────────────────────────────────────────────
+// ── Results rendering ──────────────────────────────────────────
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')

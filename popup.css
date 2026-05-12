@@ -1,6 +1,6 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Colour tokens ────────────────────────────────────────────────────────────────── */
+/* ── Colour tokens ──────────────────────────────────────────────────── */
 :root {
   --bg:            #f4f6f9;
   --surface:       #ffffff;
@@ -49,7 +49,8 @@
   --capture-dot:   #4ade80;
 }
 
-/* ── Base ──────────────────────────────────────────────────────────────────────── */
+/* ── Base ───────────────────────────────────────────────────────────── */
+html { overflow: hidden; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
@@ -58,16 +59,17 @@ body {
   line-height: 1.5;
   width: 640px;
   min-width: 640px;
+  overflow: hidden;
   transition: background .2s, color .2s;
 }
 
 .container {
   padding: 14px 14px 24px;
-  max-height: 680px;
+  max-height: 600px;
   overflow-y: auto;
 }
 
-/* ── Header ──────────────────────────────────────────────────────────────────── */
+/* ── Header ────────────────────────────────────────────────────────── */
 header {
   display: flex;
   align-items: flex-start;
@@ -100,7 +102,7 @@ header {
 }
 .icon-btn:hover, .theme-toggle:hover { background: var(--surface-alt); }
 
-/* ── Input card ─────────────────────────────────────────────────────────────────── */
+/* ── Input card ───────────────────────────────────────────────────── */
 .input-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -109,7 +111,7 @@ header {
   margin-bottom: 10px;
 }
 
-/* ── Buttons ───────────────────────────────────────────────────────────────────── */
+/* ── Buttons ───────────────────────────────────────────────────────── */
 .btn-primary {
   padding: 7px 16px;
   background: var(--accent);
@@ -152,7 +154,7 @@ header {
 }
 .btn-ghost:hover { background: var(--surface-alt); color: var(--text-2); }
 
-/* ── Capture controls ──────────────────────────────────────────────────────────────── */
+/* ── Capture controls ────────────────────────────────────────────── */
 .capture-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .capture-status {
   display: flex;
@@ -171,7 +173,7 @@ header {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
-/* ── Live discovery (chips, shown while capturing) ───────────────────────────────────── */
+/* ── Live discovery (chips, shown while capturing) ──────────────────── */
 .live-discovery {
   background: var(--surface-alt2);
   border: 1px solid var(--border-sub);
@@ -213,7 +215,7 @@ header {
   white-space: nowrap;
 }
 
-/* ── Capture details table (shown after stopping, before/without AI) ────────────────────── */
+/* ── Capture details table (shown after stopping, before/without AI) ────── */
 .capture-details-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -236,7 +238,7 @@ header {
   margin-left: auto;
 }
 
-/* ── Manual entry toggle ─────────────────────────────────────────────────────────────── */
+/* ── Manual entry toggle ─────────────────────────────────────────── */
 .manual-entry-row {
   display: flex;
   margin-top: 10px;
@@ -272,7 +274,7 @@ header {
 .manual-entry-toggle.open .manual-plus { transform: rotate(45deg); }
 .manual-entry-panel { margin-top: 8px; }
 
-/* ── URL list input (manual entry panel) ──────────────────────────────────────────────── */
+/* ── URL list input (manual entry panel) ────────────────────────────── */
 .paste-row { display: flex; gap: 10px; align-items: flex-start; }
 #domains-input {
   flex: 1;
@@ -295,7 +297,7 @@ header {
   color: var(--text-4);
 }
 
-/* ── Error ──────────────────────────────────────────────────────────────────────── */
+/* ── Error ──────────────────────────────────────────────────────────── */
 .error-msg {
   margin-top: 8px;
   padding: 7px 10px;
@@ -306,7 +308,7 @@ header {
   font-size: 12px;
 }
 
-/* ── Loading ──────────────────────────────────────────────────────────────────────── */
+/* ── Loading ────────────────────────────────────────────────────────── */
 .loading {
   display: flex;
   align-items: center;
@@ -325,7 +327,7 @@ header {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Results header ────────────────────────────────────────────────────────────────── */
+/* ── Results header ────────────────────────────────────────────────── */
 .results-header {
   display: flex;
   align-items: center;
@@ -336,7 +338,7 @@ header {
 }
 #summary { color: var(--text-2); font-size: 12px; }
 
-/* ── Category sections ─────────────────────────────────────────────────────────────────── */
+/* ── Category sections ─────────────────────────────────────────────── */
 .category-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -370,7 +372,7 @@ header {
 }
 .badge-noise { background: var(--text-4); }
 
-/* ── Tables ────────────────────────────────────────────────────────────────────────── */
+/* ── Tables ─────────────────────────────────────────────────────────── */
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 thead th {
   padding: 6px 12px;
@@ -430,7 +432,7 @@ tbody td { padding: 7px 12px; vertical-align: top; }
 .right { text-align: right; color: var(--text-4); }
 .muted { color: var(--text-5); }
 
-/* ── Noise section ──────────────────────────────────────────────────────────────────────── */
+/* ── Noise section ───────────────────────────────────────────────────── */
 .noise-details {
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -463,5 +465,5 @@ details[open] > .noise-summary::before { transform: rotate(90deg); }
 .noise table { opacity: .75; }
 #noise-sections { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
-/* ── Utility ───────────────────────────────────────────────────────────────────────────── */
+/* ── Utility ─────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
