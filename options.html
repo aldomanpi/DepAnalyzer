@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DepAnalyzer — Options</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4f6f9; --surface: #fff; --border: #e2e8f0;
+      --text: #1a1a2e; --text-2: #475569; --text-3: #64748b; --text-4: #94a3b8;
+      --accent: #3b82f6; --accent-hover: #2563eb; --accent-bg: #eff6ff;
+      --input-border: #cbd5e1; --input-text: #1e293b;
+      --success-bg: #f0fdf4; --success-border: #bbf7d0; --success-text: #166534;
+      --error-bg: #fef2f2; --error-border: #fecaca; --error-text: #991b1b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px; background: var(--bg); color: var(--text); line-height: 1.5;
+    }
+    .page { max-width: 540px; margin: 48px auto; padding: 0 24px 64px; }
+    h1 { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .page-subtitle { color: var(--text-3); font-size: 13px; margin-bottom: 28px; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px; margin-bottom: 16px;
+    }
+    .card h2 { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 14px; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+    .field label {
+      font-size: 11px; font-weight: 600; color: var(--text-2);
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .input-row { display: flex; gap: 8px; }
+    input[type="password"], input[type="text"] {
+      flex: 1; padding: 8px 11px;
+      border: 1px solid var(--input-border); border-radius: 6px;
+      font-family: 'Menlo', 'Consolas', monospace; font-size: 13px;
+      color: var(--input-text); background: var(--surface); outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+    .hint { font-size: 11px; color: var(--text-4); margin-top: 3px; }
+
+    .btn {
+      padding: 7px 16px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background .15s; white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-ghost {
+      background: none; color: var(--text-3);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: #f8fafc; color: var(--text-2); }
+    .btn-danger {
+      background: none; color: #dc2626;
+      border: 1px solid #fca5a5;
+    }
+    .btn-danger:hover { background: #fef2f2; }
+
+    .cache-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .cache-stat { font-size: 13px; color: var(--text-2); }
+    .cache-stat strong { color: #0f172a; }
+
+    .flash {
+      padding: 9px 13px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+    .flash.success { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-text); display: block; }
+    .flash.error   { background: var(--error-bg);   border: 1px solid var(--error-border);   color: var(--error-text);   display: block; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>DepAnalyzer Options</h1>
+    <p class="page-subtitle">Configure your Anthropic API key and manage the classification cache.</p>
+
+    <div class="card">
+      <h2>Anthropic API Key</h2>
+      <div class="field">
+        <label for="api-key">API Key</label>
+        <div class="input-row">
+          <input type="password" id="api-key" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+          <button class="btn btn-ghost" id="toggle-vis" title="Show / hide key">Show</button>
+        </div>
+        <span class="hint">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</span>
+      </div>
+      <button class="btn" id="save-key">Save key</button>
+      <div class="flash" id="key-flash"></div>
+    </div>
+
+    <div class="card">
+      <h2>Classification Cache</h2>
+      <p style="font-size:13px;color:var(--text-3);margin-bottom:14px;">
+        Once a domain is classified it is cached permanently so it is never sent to the AI again.
+      </p>
+      <div class="cache-row">
+        <span class="cache-stat">Cached domains: <strong id="cache-size">…</strong></span>
+        <button class="btn btn-danger" id="clear-cache">Clear cache</button>
+      </div>
+      <div class="flash" id="cache-flash"></div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

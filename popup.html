@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DepAnalyzer</title>
+  <link rel="stylesheet" href="popup.css">
+  <script>
+    (function () {
+      const saved = localStorage.getItem('theme');
+      const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.theme = saved || (sysDark ? 'dark' : 'light');
+    })();
+  </script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-text">
+        <h1>DepAnalyzer</h1>
+        <p class="subtitle" id="tab-url">Discover and categorize website dependencies</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="options-btn" title="Options">⚙</button>
+        <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode"></button>
+      </div>
+    </header>
+
+    <section class="input-card">
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="capture">Current Tab</button>
+        <button class="mode-tab" data-mode="paste">Paste List</button>
+      </div>
+
+      <!-- Capture mode -->
+      <div id="capture-mode" class="mode-panel">
+        <div class="capture-controls">
+          <button id="start-btn" class="btn-primary">Start Capture</button>
+          <button id="stop-btn" class="btn-primary hidden">Stop &amp; Analyze</button>
+          <button id="resume-btn" class="btn-secondary hidden">Resume</button>
+          <button id="analyze-captured-btn" class="btn-primary hidden">Analyze</button>
+          <button id="clear-btn" class="btn-ghost hidden">Clear</button>
+        </div>
+        <div id="capture-status" class="capture-status hidden">
+          <span class="capture-dot"></span>
+          <span id="capture-status-text">Capturing…</span>
+        </div>
+        <div id="live-discovery" class="live-discovery hidden">
+          <div class="live-header">
+            <span class="live-label">Domains discovered</span>
+            <span id="live-count" class="badge">0</span>
+          </div>
+          <div id="live-list" class="live-list"></div>
+        </div>
+      </div>
+
+      <!-- Paste mode -->
+      <div id="paste-mode" class="mode-panel hidden">
+        <div class="paste-row">
+          <textarea
+            id="domains-input"
+            rows="6"
+            placeholder="One domain per line — plain hostnames, full URLs, or markdown links like [host](https://host)"
+            spellcheck="false"
+          ></textarea>
+          <button id="categorize-btn" class="btn-primary">Categorize</button>
+        </div>
+      </div>
+
+      <div id="error-msg" class="error-msg hidden"></div>
+    </section>
+
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <span id="loading-text">Classifying…</span>
+    </div>
+
+    <div id="results" class="hidden">
+      <div class="results-header">
+        <div id="summary"></div>
+        <button id="copy-btn" class="btn-secondary">Copy whitelist</button>
+      </div>
+
+      <div id="dependency-sections"></div>
+
+      <details id="noise-section" class="noise-details">
+        <summary class="noise-summary">
+          <span>Noise / Excluded</span>
+          <span id="noise-badge" class="badge badge-noise">0</span>
+          <span class="noise-hint">(widely-allowed — not in whitelist)</span>
+        </summary>
+        <div id="noise-sections"></div>
+      </details>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
