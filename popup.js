@@ -33,9 +33,6 @@ const resumeBtn           = document.getElementById('resume-btn');
 const analyzeBtn          = document.getElementById('analyze-captured-btn');
 const clearBtn            = document.getElementById('clear-btn');
 const captureStatus       = document.getElementById('capture-status');
-const liveDiscovery       = document.getElementById('live-discovery');
-const liveCount           = document.getElementById('live-count');
-const liveList            = document.getElementById('live-list');
 const captureDetailsEl    = document.getElementById('capture-details');
 const captureDetailsCount = document.getElementById('capture-details-count');
 const captureDetailsBody  = document.getElementById('capture-details-body');
@@ -57,6 +54,11 @@ let activeTabId  = null;
 let activeTabUrl = '';
 let whitelistDomains = [];
 
+// Live capture view state
+let pollTimer = null;                 // setInterval handle while capturing
+const expandedDomains = new Set();    // domains the user expanded (preserved across live re-renders)
+let lastCaptureSig = '';              // skip rebuilds when nothing changed
+
 // ── Manual entry toggle ──────────────────────────────────────
 document.getElementById('manual-toggle-btn').addEventListener('click', () => {
   const panel = document.getElementById('manual-entry-panel');
@@ -77,8 +79,6 @@ function setCaptureUI(state) {
   analyzeBtn.classList.toggle('hidden', state !== 'stopped');
   clearBtn.classList.toggle('hidden',   state === 'idle');
   captureStatus.classList.toggle('hidden', state !== 'capturing');
-  // Hide live chips when stopped (details table takes over)
-  liveDiscovery.classList.toggle('hidden', state === 'stopped');
 }
 
 // ── Error ──────────────────────────────────────────────────
@@ -91,29 +91,46 @@ function clearError() {
   errorMsg.textContent = '';
 }
 
-// ── Live domain chip (during capture) ───────────────────────────
-const knownDomains = new Set();
+// ── Live capture polling ────────────────────────────────────────
+// While capturing, pull the full capture state on an interval so the
+// details table (subdomains, request counts, URIs) updates in real time.
+async function refreshCaptureDetails() {
+  const resp = await chrome.runtime
+    .sendMessage({ type: 'getCapture', tabId: activeTabId })
+    .catch(() => null);
+  if (resp?.capturing) renderCaptureDetails(resp.domains || []);
+}
 
-function addLiveChip(domain) {
-  if (knownDomains.has(domain)) return;
-  knownDomains.add(domain);
-  const chip = document.createElement('span');
-  chip.className = 'live-chip';
-  chip.textContent = domain;
-  liveList.appendChild(chip);
-  liveCount.textContent = knownDomains.size;
+function startCapturePolling() {
+  stopCapturePolling();
+  pollTimer = setInterval(refreshCaptureDetails, 1000);
+}
+
+function stopCapturePolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
 // ── Raw capture details table ──────────────────────────────────
 function renderCaptureDetails(domains) {
   if (!domains.length) {
     captureDetailsEl.classList.add('hidden');
+    lastCaptureSig = '';
     return;
   }
   captureDetailsCount.textContent = domains.length;
+  captureDetailsEl.classList.remove('hidden');
+
+  // Skip the rebuild (and avoid flicker / collapsing expanded rows) when
+  // nothing changed since the last render.
+  const sig = domains
+    .map(d => `${d.domain}:${d.requestCount || 0}:${(d.subdomains || []).length}:${(d.urls || []).length}`)
+    .sort()
+    .join('|');
+  if (sig === lastCaptureSig) return;
+  lastCaptureSig = sig;
+
   captureDetailsBody.innerHTML = '';
   captureDetailsBody.appendChild(buildCaptureTable(domains));
-  captureDetailsEl.classList.remove('hidden');
 }
 
 function buildCaptureTable(domains) {
@@ -132,8 +149,9 @@ function buildCaptureTable(domains) {
   const sorted = [...domains].sort((a, b) => (b.requestCount || 0) - (a.requestCount || 0));
 
   for (const { domain, subdomains, requestCount, urls } of sorted) {
+    const isOpen = expandedDomains.has(domain);
     const tr = document.createElement('tr');
-    tr.className = 'domain-row';
+    tr.className = 'domain-row' + (isOpen ? ' expanded' : '');
     const subs = (subdomains || []).length
       ? subdomains.join(', ')
       : '<span class="muted">—</span>';
@@ -145,7 +163,7 @@ function buildCaptureTable(domains) {
       <td class="right">${requestCount || 0}</td>`;
 
     const detailRow = document.createElement('tr');
-    detailRow.className = 'url-detail hidden';
+    detailRow.className = 'url-detail' + (isOpen ? '' : ' hidden');
     const detailCell = document.createElement('td');
     detailCell.colSpan = 3;
     const paths = (urls || []).map(u => {
@@ -160,6 +178,8 @@ function buildCaptureTable(domains) {
     tr.addEventListener('click', () => {
       const open = tr.classList.toggle('expanded');
       detailRow.classList.toggle('hidden', !open);
+      if (open) expandedDomains.add(domain);
+      else expandedDomains.delete(domain);
     });
     tbody.appendChild(tr);
     tbody.appendChild(detailRow);
@@ -184,11 +204,10 @@ async function init() {
   const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
   if (!resp) { setCaptureUI('idle'); return; }
 
-  for (const { domain } of (resp.domains || [])) addLiveChip(domain);
-
   if (resp.capturing) {
-    if (resp.domains?.length) liveDiscovery.classList.remove('hidden');
     setCaptureUI('capturing');
+    renderCaptureDetails(resp.domains || []);
+    startCapturePolling();
   } else if (resp.domains?.length) {
     setCaptureUI('stopped');
     renderCaptureDetails(resp.domains);
@@ -203,8 +222,9 @@ init().catch(console.error);
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.tabId !== activeTabId) return;
   if (msg.type === 'newDomain') {
-    addLiveChip(msg.domain);
-    liveDiscovery.classList.remove('hidden');
+    // A newly-seen domain — refresh the live table immediately
+    // instead of waiting for the next poll tick.
+    refreshCaptureDetails();
   }
   if (msg.type === 'progress') {
     loadingTxt.textContent = msg.status;
@@ -217,17 +237,17 @@ startBtn.addEventListener('click', async () => {
   if (!activeTabUrl || /^(chrome|edge|about):/.test(activeTabUrl)) {
     showError('Cannot capture on browser internal pages.'); return;
   }
-  knownDomains.clear();
-  liveList.innerHTML = '';
-  liveCount.textContent = '0';
+  expandedDomains.clear();
+  lastCaptureSig = '';
   captureDetailsEl.classList.add('hidden');
   results.classList.add('hidden');
   await chrome.runtime.sendMessage({ type: 'startCapture', tabId: activeTabId, url: activeTabUrl });
   setCaptureUI('capturing');
-  liveDiscovery.classList.remove('hidden');
+  startCapturePolling();
 });
 
 stopBtn.addEventListener('click', async () => {
+  stopCapturePolling();
   await chrome.runtime.sendMessage({ type: 'stopCapture', tabId: activeTabId });
   // Fetch the full capture state (with subdomains + URLs) and render details table
   const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
@@ -237,17 +257,16 @@ stopBtn.addEventListener('click', async () => {
 
 resumeBtn.addEventListener('click', async () => {
   await chrome.runtime.sendMessage({ type: 'resumeCapture', tabId: activeTabId });
-  captureDetailsEl.classList.add('hidden');
   setCaptureUI('capturing');
-  liveDiscovery.classList.remove('hidden');
+  startCapturePolling();
+  refreshCaptureDetails();
 });
 
 clearBtn.addEventListener('click', async () => {
+  stopCapturePolling();
   await chrome.runtime.sendMessage({ type: 'clearCapture', tabId: activeTabId });
-  knownDomains.clear();
-  liveList.innerHTML = '';
-  liveCount.textContent = '0';
-  liveDiscovery.classList.add('hidden');
+  expandedDomains.clear();
+  lastCaptureSig = '';
   captureDetailsEl.classList.add('hidden');
   setCaptureUI('idle');
   results.classList.add('hidden');
