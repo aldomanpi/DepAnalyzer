@@ -5,13 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DepAnalyzer</title>
   <link rel="stylesheet" href="popup.css">
-  <script>
-    (function () {
-      const saved = localStorage.getItem('theme');
-      const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.theme = saved || (sysDark ? 'dark' : 'light');
-    })();
-  </script>
+  <script src="theme-init.js"></script>
 </head>
 <body>
   <div class="container">
