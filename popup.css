@@ -156,6 +156,23 @@ header {
 
 /* ── Capture controls ────────────────────────────────────────────── */
 .capture-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.subdomain-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+}
+.subdomain-toggle input {
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+.subdomain-toggle:hover { color: var(--text-2); }
 .capture-status {
   display: flex;
   align-items: center;

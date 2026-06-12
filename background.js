@@ -98,10 +98,12 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (!registered) return;
 
     const isNew = !state.domains.has(registered);
-    if (isNew) state.domains.set(registered, { subdomains: [], requestCount: 0, urls: [] });
+    if (isNew) state.domains.set(registered, { subdomains: [], requestCount: 0, urls: [], hostCounts: {} });
 
     const info = state.domains.get(registered);
     info.requestCount++;
+    if (!info.hostCounts) info.hostCounts = {};
+    info.hostCounts[hostname] = (info.hostCounts[hostname] || 0) + 1;
     if (hostname !== registered && !info.subdomains.includes(hostname)) {
       info.subdomains.push(hostname);
     }
@@ -333,8 +335,13 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
     } catch {}
   }
 
+  // A key may be a registered domain or (in subdomain mode) a full hostname —
+  // either way it's first-party when its registered domain matches the target.
+  const isTargetParty = d =>
+    !!targetRegistered && (d === targetRegistered || getRegisteredDomain(d) === targetRegistered);
+
   const allDomains = Object.keys(domainMap);
-  const thirdParty = allDomains.filter(d => d !== targetRegistered);
+  const thirdParty = allDomains.filter(d => !isTargetParty(d));
   const cached   = thirdParty.filter(d =>  (d in cache));
   const uncached = thirdParty.filter(d => !(d in cache));
 
@@ -361,7 +368,7 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
 
   const results = [];
   for (const [domain, info] of Object.entries(domainMap)) {
-    const isFirstParty = targetRegistered && domain === targetRegistered;
+    const isFirstParty = isTargetParty(domain);
     const cat    = isFirstParty ? 'first_party' : (allCats[domain]?.category || 'cdn');
     const impact = isFirstParty ? '' : (allCats[domain]?.impact || '');
     results.push({

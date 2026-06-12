@@ -33,6 +33,7 @@ const resumeBtn           = document.getElementById('resume-btn');
 const analyzeBtn          = document.getElementById('analyze-captured-btn');
 const clearBtn            = document.getElementById('clear-btn');
 const captureStatus       = document.getElementById('capture-status');
+const subdomainToggle     = document.getElementById('subdomain-toggle');
 const captureDetailsEl    = document.getElementById('capture-details');
 const captureDetailsCount = document.getElementById('capture-details-count');
 const captureDetailsBody  = document.getElementById('capture-details-body');
@@ -68,6 +69,14 @@ document.getElementById('manual-toggle-btn').addEventListener('click', () => {
   btn.setAttribute('aria-expanded', String(opening));
   btn.classList.toggle('open', opening);
   if (opening) clearError();
+});
+
+// ── Subdomain categorization toggle (persisted) ─────────────────
+chrome.storage.local.get('subdomainMode').then(({ subdomainMode }) => {
+  subdomainToggle.checked = !!subdomainMode;
+});
+subdomainToggle.addEventListener('change', () => {
+  chrome.storage.local.set({ subdomainMode: subdomainToggle.checked });
 });
 
 // ── Capture state UI ───────────────────────────────────────────
@@ -275,17 +284,47 @@ clearBtn.addEventListener('click', async () => {
 analyzeBtn.addEventListener('click', () => runAnalyzeCapture());
 
 // ── Analyze captured domains with AI ───────────────────────────
+// Expand one captured registered-domain entry into per-hostname entries.
+// Uses the background's per-host request counts; falls back to deriving
+// hosts from captured URLs/subdomains for captures made before hostCounts.
+function expandToHosts({ domain, subdomains, requestCount, urls, hostCounts }, out) {
+  const counts = hostCounts && Object.keys(hostCounts).length ? hostCounts : null;
+  const hosts = new Set(counts ? Object.keys(counts) : (subdomains || []));
+  if (!counts) {
+    for (const u of urls || []) {
+      try { hosts.add(new URL(u).hostname); } catch {}
+    }
+  }
+  if (!hosts.size) hosts.add(domain);
+  for (const h of hosts) {
+    const hostUrls = (urls || []).filter(u => {
+      try { return new URL(u).hostname === h; } catch { return false; }
+    });
+    out[h] = {
+      subdomains: [],
+      requestCount: counts ? (counts[h] || 0) : Math.max(hostUrls.length, 1),
+      urls: hostUrls,
+    };
+  }
+}
+
 async function runAnalyzeCapture() {
   clearError();
   const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
   if (!resp?.domains?.length) { showError('No domains captured yet.'); return; }
 
+  const perHost = subdomainToggle.checked;
   const domainMap = {};
-  for (const { domain, subdomains, requestCount, urls } of resp.domains) {
-    domainMap[domain] = { subdomains, requestCount, urls };
+  for (const entry of resp.domains) {
+    if (perHost) {
+      expandToHosts(entry, domainMap);
+    } else {
+      const { domain, subdomains, requestCount, urls } = entry;
+      domainMap[domain] = { subdomains, requestCount, urls };
+    }
   }
   // Pass the stored targetRegistered directly — avoids URL re-parsing errors
-  await runClassify(domainMap, resp.targetUrl || activeTabUrl, resp.targetRegistered || '');
+  await runClassify(domainMap, resp.targetUrl || activeTabUrl, resp.targetRegistered || '', perHost);
 }
 
 // ── Manual URL categorization ─────────────────────────────────
@@ -318,8 +357,14 @@ categBtn.addEventListener('click', async () => {
   const hostnames = parseDomainList(text);
   if (!hostnames.length) { showError('No valid domains found in input.'); return; }
 
+  const perHost = subdomainToggle.checked;
   const domainMap = {};
   for (const h of hostnames) {
+    if (perHost) {
+      // Each hostname becomes its own entry — no grouping by registered domain
+      domainMap[h] = { subdomains: [], requestCount: 1, urls: [`https://${h}`] };
+      continue;
+    }
     const reg = getRegisteredDomain(h) || h;
     if (!domainMap[reg]) domainMap[reg] = { subdomains: [], requestCount: 0, urls: [] };
     domainMap[reg].requestCount++;
@@ -327,11 +372,11 @@ categBtn.addEventListener('click', async () => {
     if (h !== reg && !domainMap[reg].subdomains.includes(h)) domainMap[reg].subdomains.push(h);
   }
 
-  await runClassify(domainMap, '', '');
+  await runClassify(domainMap, '', '', perHost);
 });
 
 // ── Common classify runner ─────────────────────────────────────
-async function runClassify(domainMap, targetUrl, targetRegistered = '') {
+async function runClassify(domainMap, targetUrl, targetRegistered = '', perHost = false) {
   results.classList.add('hidden');
   loading.classList.remove('hidden');
   loadingTxt.textContent = 'Starting…';
@@ -346,7 +391,7 @@ async function runClassify(domainMap, targetUrl, targetRegistered = '') {
     });
     if (!resp) { showError('No response from background worker.'); return; }
     if (resp.error) { showError(resp.error); return; }
-    renderResults(resp);
+    renderResults(resp, perHost);
   } catch (e) {
     showError('Error: ' + e.message);
   } finally {
@@ -361,9 +406,19 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildTable(items) {
+function buildTable(items, perHost = false) {
   const table = document.createElement('table');
-  table.innerHTML = `
+  // In per-host (subdomain) mode each row IS a hostname, so the
+  // "Subdomains seen" column is redundant — drop it for a cleaner view.
+  table.innerHTML = perHost
+    ? `
+    <thead>
+      <tr>
+        <th>Subdomain</th>
+        <th class="right">Requests</th>
+      </tr>
+    </thead>`
+    : `
     <thead>
       <tr>
         <th>Domain</th>
@@ -384,13 +439,13 @@ function buildTable(items) {
       <td class="domain-cell">
         <span class="expand-icon">▸</span><strong>${esc(item.domain)}</strong>${impactHtml}
       </td>
-      <td class="sub-cell">${subs}</td>
+      ${perHost ? '' : `<td class="sub-cell">${subs}</td>`}
       <td class="right">${item.request_count}</td>`;
 
     const detailRow = document.createElement('tr');
     detailRow.className = 'url-detail hidden';
     const detailCell = document.createElement('td');
-    detailCell.colSpan = 3;
+    detailCell.colSpan = perHost ? 2 : 3;
     const paths = (item.urls || []).map(u => {
       try { const p = new URL(u); return p.host + p.pathname + p.search + p.hash; } catch { return u; }
     });
@@ -411,7 +466,7 @@ function buildTable(items) {
   return table;
 }
 
-function buildSection(label, icon, items, isNoise) {
+function buildSection(label, icon, items, isNoise, perHost = false) {
   const section = document.createElement('div');
   section.className = 'category-section' + (isNoise ? ' noise' : '');
   const header = document.createElement('div');
@@ -421,11 +476,11 @@ function buildSection(label, icon, items, isNoise) {
     <span class="cat-label">${label}</span>
     <span class="badge">${items.length}</span>`;
   section.appendChild(header);
-  section.appendChild(buildTable(items));
+  section.appendChild(buildTable(items, perHost));
   return section;
 }
 
-function renderResults(data) {
+function renderResults(data, perHost = false) {
   depSects.innerHTML = '';
   noiseSects.innerHTML = '';
   whitelistDomains = [];
@@ -449,21 +504,22 @@ function renderResults(data) {
   for (const cat of orderedCats) {
     const items = grouped[cat];
     if (!items) continue;
-    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false));
+    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false, perHost));
   }
 
   let noiseCount = 0;
   for (const cat of Object.keys(noisyGrouped)) {
     const items = noisyGrouped[cat];
     noiseCount += items.length;
-    noiseSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true));
+    noiseSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true, perHost));
   }
   noiseBadge.textContent = noiseCount;
 
   const cleanCount = data.results.filter(r => !r.is_noise).length;
+  const unitLabel  = perHost ? 'subdomain' : 'domain';
   summary.innerHTML =
     `Analyzed <strong>${esc(data.target)}</strong> — ` +
-    `<strong>${cleanCount}</strong> meaningful + <strong>${noiseCount}</strong> noise`;
+    `<strong>${cleanCount}</strong> meaningful + <strong>${noiseCount}</strong> noise ${unitLabel}(s)`;
 
   results.classList.remove('hidden');
 }
