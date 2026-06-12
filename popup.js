@@ -284,10 +284,14 @@ clearBtn.addEventListener('click', async () => {
 analyzeBtn.addEventListener('click', () => runAnalyzeCapture());
 
 // ── Analyze captured domains with AI ───────────────────────────
-// Expand one captured registered-domain entry into per-hostname entries.
-// Uses the background's per-host request counts; falls back to deriving
-// hosts from captured URLs/subdomains for captures made before hostCounts.
+// Expand one captured registered-domain entry into the registered domain
+// itself PLUS one entry per individual subdomain hostname. Uses the
+// background's per-host request counts; falls back to deriving hosts from
+// captured URLs/subdomains for captures made before hostCounts existed.
 function expandToHosts({ domain, subdomains, requestCount, urls, hostCounts }, out) {
+  // Registered-domain (apex) row — always included.
+  out[domain] = { subdomains: subdomains || [], requestCount: requestCount || 0, urls: urls || [] };
+
   const counts = hostCounts && Object.keys(hostCounts).length ? hostCounts : null;
   const hosts = new Set(counts ? Object.keys(counts) : (subdomains || []));
   if (!counts) {
@@ -295,8 +299,8 @@ function expandToHosts({ domain, subdomains, requestCount, urls, hostCounts }, o
       try { hosts.add(new URL(u).hostname); } catch {}
     }
   }
-  if (!hosts.size) hosts.add(domain);
   for (const h of hosts) {
+    if (h === domain) continue; // already covered by the apex row
     const hostUrls = (urls || []).filter(u => {
       try { return new URL(u).hostname === h; } catch { return false; }
     });
@@ -360,16 +364,19 @@ categBtn.addEventListener('click', async () => {
   const perHost = subdomainToggle.checked;
   const domainMap = {};
   for (const h of hostnames) {
-    if (perHost) {
-      // Each hostname becomes its own entry — no grouping by registered domain
-      domainMap[h] = { subdomains: [], requestCount: 1, urls: [`https://${h}`] };
-      continue;
-    }
     const reg = getRegisteredDomain(h) || h;
+    // Registered-domain (grouped) entry — always present.
     if (!domainMap[reg]) domainMap[reg] = { subdomains: [], requestCount: 0, urls: [] };
     domainMap[reg].requestCount++;
     domainMap[reg].urls.push(`https://${h}`);
     if (h !== reg && !domainMap[reg].subdomains.includes(h)) domainMap[reg].subdomains.push(h);
+
+    // In subdomain mode, also classify the full hostname on its own.
+    if (perHost && h !== reg) {
+      if (!domainMap[h]) domainMap[h] = { subdomains: [], requestCount: 0, urls: [] };
+      domainMap[h].requestCount++;
+      domainMap[h].urls.push(`https://${h}`);
+    }
   }
 
   await runClassify(domainMap, '', '', perHost);
@@ -414,7 +421,7 @@ function buildTable(items, perHost = false) {
     ? `
     <thead>
       <tr>
-        <th>Subdomain</th>
+        <th>Domain / Subdomain</th>
         <th class="right">Requests</th>
       </tr>
     </thead>`
@@ -516,7 +523,7 @@ function renderResults(data, perHost = false) {
   noiseBadge.textContent = noiseCount;
 
   const cleanCount = data.results.filter(r => !r.is_noise).length;
-  const unitLabel  = perHost ? 'subdomain' : 'domain';
+  const unitLabel  = perHost ? 'host' : 'domain';
   summary.innerHTML =
     `Analyzed <strong>${esc(data.target)}</strong> — ` +
     `<strong>${cleanCount}</strong> meaningful + <strong>${noiseCount}</strong> noise ${unitLabel}(s)`;
