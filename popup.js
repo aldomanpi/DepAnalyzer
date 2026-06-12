@@ -413,19 +413,9 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildTable(items, perHost = false) {
+function buildTable(items) {
   const table = document.createElement('table');
-  // In per-host (subdomain) mode each row IS a hostname, so the
-  // "Subdomains seen" column is redundant — drop it for a cleaner view.
-  table.innerHTML = perHost
-    ? `
-    <thead>
-      <tr>
-        <th>Domain / Subdomain</th>
-        <th class="right">Requests</th>
-      </tr>
-    </thead>`
-    : `
+  table.innerHTML = `
     <thead>
       <tr>
         <th>Domain</th>
@@ -446,13 +436,13 @@ function buildTable(items, perHost = false) {
       <td class="domain-cell">
         <span class="expand-icon">▸</span><strong>${esc(item.domain)}</strong>${impactHtml}
       </td>
-      ${perHost ? '' : `<td class="sub-cell">${subs}</td>`}
+      <td class="sub-cell">${subs}</td>
       <td class="right">${item.request_count}</td>`;
 
     const detailRow = document.createElement('tr');
     detailRow.className = 'url-detail hidden';
     const detailCell = document.createElement('td');
-    detailCell.colSpan = perHost ? 2 : 3;
+    detailCell.colSpan = 3;
     const paths = (item.urls || []).map(u => {
       try { const p = new URL(u); return p.host + p.pathname + p.search + p.hash; } catch { return u; }
     });
@@ -473,6 +463,83 @@ function buildTable(items, perHost = false) {
   return table;
 }
 
+// Subdomain mode: nest each subdomain under its registered (apex) domain,
+// mirroring the actual domain hierarchy. `items` all share one category.
+function buildNestedTable(items) {
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Domain / Subdomain</th>
+        <th class="right">Requests</th>
+      </tr>
+    </thead>`;
+  const tbody = document.createElement('tbody');
+
+  // Group by registered domain; the apex item (domain === registered) is the
+  // parent, everything else nests beneath it.
+  const groups = new Map();
+  for (const item of items) {
+    const reg = getRegisteredDomain(item.domain) || item.domain;
+    if (!groups.has(reg)) groups.set(reg, { reg, apex: null, children: [] });
+    const g = groups.get(reg);
+    if (item.domain === reg) g.apex = item;
+    else g.children.push(item);
+  }
+
+  const addDataRow = (item, isChild) => {
+    const tr = document.createElement('tr');
+    tr.className = 'domain-row' + (isChild ? ' child' : '');
+    const impactHtml = item.impact
+      ? `<div class="domain-reason">${esc(item.impact)}</div>` : '';
+    tr.innerHTML = `
+      <td class="domain-cell">
+        <span class="expand-icon">▸</span><strong>${esc(item.domain)}</strong>${impactHtml}
+      </td>
+      <td class="right">${item.request_count}</td>`;
+
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'url-detail hidden';
+    const detailCell = document.createElement('td');
+    detailCell.colSpan = 2;
+    const paths = (item.urls || []).map(u => {
+      try { const p = new URL(u); return p.host + p.pathname + p.search + p.hash; } catch { return u; }
+    });
+    const listHtml = paths.length
+      ? paths.map(p => `<div class="url-entry">${esc(p)}</div>`).join('')
+      : '<div class="url-entry muted">No paths recorded.</div>';
+    detailCell.innerHTML = `<div class="url-list">${listHtml}</div>`;
+    detailRow.appendChild(detailCell);
+
+    tr.addEventListener('click', () => {
+      const open = tr.classList.toggle('expanded');
+      detailRow.classList.toggle('hidden', !open);
+    });
+    tbody.appendChild(tr);
+    tbody.appendChild(detailRow);
+  };
+
+  const sortedGroups = [...groups.values()].sort((a, b) => a.reg.localeCompare(b.reg));
+  for (const g of sortedGroups) {
+    if (g.apex) {
+      addDataRow(g.apex, false);
+    } else {
+      // Apex was classified in a different category — show a structural
+      // label row so the subdomains still read as nested under their domain.
+      const tr = document.createElement('tr');
+      tr.className = 'group-label-row';
+      tr.innerHTML =
+        `<td class="domain-cell"><strong>${esc(g.reg)}</strong></td><td></td>`;
+      tbody.appendChild(tr);
+    }
+    for (const child of g.children.sort((a, b) => a.domain.localeCompare(b.domain))) {
+      addDataRow(child, true);
+    }
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
 function buildSection(label, icon, items, isNoise, perHost = false) {
   const section = document.createElement('div');
   section.className = 'category-section' + (isNoise ? ' noise' : '');
@@ -483,7 +550,7 @@ function buildSection(label, icon, items, isNoise, perHost = false) {
     <span class="cat-label">${label}</span>
     <span class="badge">${items.length}</span>`;
   section.appendChild(header);
-  section.appendChild(buildTable(items, perHost));
+  section.appendChild(perHost ? buildNestedTable(items) : buildTable(items));
   return section;
 }
 

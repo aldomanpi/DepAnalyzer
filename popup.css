@@ -449,6 +449,23 @@ tbody td { padding: 7px 12px; vertical-align: top; }
 .right { text-align: right; color: var(--text-4); }
 .muted { color: var(--text-5); }
 
+/* ── Nested subdomain rows (subdomain mode) ──────────────────────────── */
+.domain-row.child .domain-cell { padding-left: 26px; position: relative; }
+.domain-row.child .domain-cell::before {
+  content: "↳";
+  position: absolute;
+  left: 12px;
+  color: var(--text-5);
+  font-size: 10px;
+}
+.domain-row.child .domain-cell strong { color: var(--text-2); }
+.group-label-row td { padding: 7px 12px; }
+.group-label-row .domain-cell strong {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--text-4);
+}
+
 /* ── Noise section ───────────────────────────────────────────────────── */
 .noise-details {
   margin-top: 10px;
