@@ -38,10 +38,13 @@ const errorMsg            = document.getElementById('error-msg');
 const summary             = document.getElementById('summary');
 const copyBtn             = document.getElementById('copy-btn');
 const depSects            = document.getElementById('dependency-sections');
+const commonSection       = document.getElementById('common-section');
+const commonSects         = document.getElementById('common-sections');
+const commonBadge         = document.getElementById('common-badge');
 const noiseSects          = document.getElementById('noise-sections');
 const noiseBadge          = document.getElementById('noise-badge');
 
-const CATEGORY_ICONS = { first_party: '🏠', cdn: '🔗', noise: '🔇' };
+const CATEGORY_ICONS = { first_party: '🏠', specific: '🔗', common: '🌐', noise: '🔇' };
 
 let activeTabId  = null;
 let activeTabUrl = '';
@@ -590,44 +593,43 @@ function buildSection(label, icon, items, isNoise, perHost = false) {
 
 function renderResults(data, perHost = false) {
   depSects.innerHTML = '';
+  commonSects.innerHTML = '';
   noiseSects.innerHTML = '';
   whitelistDomains = [];
 
-  const grouped      = {};
-  const noisyGrouped = {};
+  // Partition into the four categories. The whitelist = first-party + specific
+  // (the per-site dependencies to allow). Common = ubiquitous, already-allowed.
+  const buckets = { first_party: [], specific: [], common: [], noise: [] };
   for (const item of data.results) {
-    if (item.is_noise) {
-      (noisyGrouped[item.category] = noisyGrouped[item.category] || []).push(item);
-    } else {
-      (grouped[item.category] = grouped[item.category] || []).push(item);
-      whitelistDomains.push(item.domain);
-    }
+    (buckets[item.category] || buckets.specific).push(item);
   }
 
-  const catOrder = ['first_party', 'cdn'];
-  const orderedCats = [
-    ...catOrder.filter(c => grouped[c]),
-    ...Object.keys(grouped).filter(c => !catOrder.includes(c)),
-  ];
-  for (const cat of orderedCats) {
-    const items = grouped[cat];
-    if (!items) continue;
-    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false, perHost));
+  for (const cat of ['first_party', 'specific']) {
+    const items = buckets[cat];
+    if (!items.length) continue;
+    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat], items, false, perHost));
+    whitelistDomains.push(...items.map(i => i.domain));
   }
 
-  let noiseCount = 0;
-  for (const cat of Object.keys(noisyGrouped)) {
-    const items = noisyGrouped[cat];
-    noiseCount += items.length;
-    noiseSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true, perHost));
+  if (buckets.common.length) {
+    commonSects.appendChild(
+      buildSection(buckets.common[0].label, CATEGORY_ICONS.common, buckets.common, false, perHost));
   }
-  noiseBadge.textContent = noiseCount;
+  commonBadge.textContent = buckets.common.length;
+  commonSection.classList.toggle('hidden', !buckets.common.length);
 
-  const cleanCount = data.results.filter(r => !r.is_noise).length;
-  const unitLabel  = perHost ? 'host' : 'domain';
+  if (buckets.noise.length) {
+    noiseSects.appendChild(
+      buildSection(buckets.noise[0].label, CATEGORY_ICONS.noise, buckets.noise, true, perHost));
+  }
+  noiseBadge.textContent = buckets.noise.length;
+
+  const unit = perHost ? 'host' : 'domain';
   summary.innerHTML =
     `Analyzed <strong>${esc(data.target)}</strong> — ` +
-    `<strong>${cleanCount}</strong> meaningful + <strong>${noiseCount}</strong> noise ${unitLabel}(s)`;
+    `<strong>${whitelistDomains.length}</strong> to allow · ` +
+    `<strong>${buckets.common.length}</strong> common · ` +
+    `<strong>${buckets.noise.length}</strong> noise ${unit}(s)`;
 
   results.classList.remove('hidden');
 }
