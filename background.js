@@ -153,6 +153,17 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   persistCaptures();
 });
 
+// Re-assert the badge after a captured tab navigates. Chrome can drop the
+// per-tab badge on navigation, and we otherwise only repaint it when a brand-
+// new domain is seen — so a new page that re-contacts already-seen domains
+// would leave the badge blank. Capture itself continues across navigations
+// (state is keyed by tabId and survives in memory + session storage).
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!changeInfo.status) return; // only react to load-lifecycle changes
+  const s = captures.get(tabId);
+  if (s) updateBadge(tabId, s.domains.size);
+});
+
 // --- Message handler ---
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const tabId = msg.tabId;
