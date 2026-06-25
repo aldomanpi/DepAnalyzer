@@ -387,6 +387,8 @@ async function runClassify(domainMap, targetUrl, targetRegistered = '', perHost 
   results.classList.add('hidden');
   loading.classList.remove('hidden');
   loadingTxt.textContent = 'Starting…';
+  // Scroll the status message into view so it's obvious work has started.
+  loading.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
   try {
     const resp = await chrome.runtime.sendMessage({
@@ -399,6 +401,8 @@ async function runClassify(domainMap, targetUrl, targetRegistered = '', perHost 
     if (!resp) { showError('No response from background worker.'); return; }
     if (resp.error) { showError(resp.error); return; }
     renderResults(resp, perHost);
+    // Bring the freshly-rendered results into view.
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     showError('Error: ' + e.message);
   } finally {

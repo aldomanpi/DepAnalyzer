@@ -1,6 +1,5 @@
 (async () => {
   const keyInput   = document.getElementById('api-key');
-  const toggleBtn  = document.getElementById('toggle-vis');
   const saveBtn    = document.getElementById('save-key');
   const keyFlash   = document.getElementById('key-flash');
   const clearBtn   = document.getElementById('clear-cache');
@@ -17,13 +16,6 @@
     cacheStat.textContent = resp?.size ?? '?';
   }
   refreshCacheSize();
-
-  // Show/hide key
-  toggleBtn.addEventListener('click', () => {
-    const isHidden = keyInput.type === 'password';
-    keyInput.type = isHidden ? 'text' : 'password';
-    toggleBtn.textContent = isHidden ? 'Hide' : 'Show';
-  });
 
   function flash(el, cls, msg) {
     el.className = `flash ${cls}`;
