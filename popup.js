@@ -14,6 +14,18 @@ document.getElementById('options-btn').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
+// ── API key onboarding ───────────────────────────────────────
+// Surface a prompt when no key is set, instead of only failing at analyze time.
+async function refreshApiKeyNotice() {
+  const { apiKey } = await chrome.storage.local.get('apiKey');
+  apikeyNotice.classList.toggle('hidden', !!apiKey);
+}
+refreshApiKeyNotice();
+apikeyNoticeBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.apiKey) refreshApiKeyNotice();
+});
+
 // ── Elements ────────────────────────────────────────────────
 const tabUrlEl            = document.getElementById('tab-url');
 const startBtn            = document.getElementById('start-btn');
@@ -30,6 +42,9 @@ const domainsInput        = document.getElementById('domains-input');
 const categBtn            = document.getElementById('categorize-btn');
 const loading             = document.getElementById('loading');
 const loadingTxt          = document.getElementById('loading-text');
+const cancelBtn           = document.getElementById('cancel-btn');
+const apikeyNotice        = document.getElementById('apikey-notice');
+const apikeyNoticeBtn     = document.getElementById('apikey-notice-btn');
 const results             = document.getElementById('results');
 const errorMsg            = document.getElementById('error-msg');
 const summary             = document.getElementById('summary');
@@ -79,13 +94,19 @@ function setCaptureUI(state) {
   captureStatus.classList.toggle('hidden', state !== 'capturing');
 }
 
-// ── Error ──────────────────────────────────────────────────
+// ── Error / notice ──────────────────────────────────────────
 function showError(msg) {
   errorMsg.textContent = msg;
+  errorMsg.classList.remove('hidden', 'info');
+}
+function showNotice(msg) {
+  errorMsg.textContent = msg;
   errorMsg.classList.remove('hidden');
+  errorMsg.classList.add('info');
 }
 function clearError() {
   errorMsg.classList.add('hidden');
+  errorMsg.classList.remove('info');
   errorMsg.textContent = '';
 }
 
@@ -106,6 +127,24 @@ function startCapturePolling() {
 
 function stopCapturePolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// Make a row keyboard- and screen-reader-accessible: it behaves as a button
+// that toggles its detail row. Returns nothing; wires click + Enter/Space.
+function wireExpandable(tr, detailRow, initiallyOpen, onToggle) {
+  tr.setAttribute('role', 'button');
+  tr.tabIndex = 0;
+  tr.setAttribute('aria-expanded', String(!!initiallyOpen));
+  const toggle = () => {
+    const open = tr.classList.toggle('expanded');
+    detailRow.classList.toggle('hidden', !open);
+    tr.setAttribute('aria-expanded', String(open));
+    if (onToggle) onToggle(open);
+  };
+  tr.addEventListener('click', toggle);
+  tr.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+  });
 }
 
 // ── Raw capture details table ──────────────────────────────────
@@ -173,9 +212,7 @@ function buildCaptureTable(domains) {
     detailCell.innerHTML = `<div class="url-list">${listHtml}</div>`;
     detailRow.appendChild(detailCell);
 
-    tr.addEventListener('click', () => {
-      const open = tr.classList.toggle('expanded');
-      detailRow.classList.toggle('hidden', !open);
+    wireExpandable(tr, detailRow, isOpen, (open) => {
       if (open) expandedDomains.add(domain);
       else expandedDomains.delete(domain);
     });
@@ -371,10 +408,19 @@ categBtn.addEventListener('click', async () => {
   await runClassify(domainMap, '', '', perHost);
 });
 
+// Cancel an in-flight analysis.
+cancelBtn.addEventListener('click', async () => {
+  cancelBtn.disabled = true;
+  loadingTxt.textContent = 'Cancelling…';
+  await chrome.runtime.sendMessage({ type: 'cancelClassify', tabId: activeTabId }).catch(() => {});
+});
+
 // ── Common classify runner ─────────────────────────────────────
 async function runClassify(domainMap, targetUrl, targetRegistered = '', perHost = false) {
   results.classList.add('hidden');
+  clearError();
   loading.classList.remove('hidden');
+  cancelBtn.disabled = false;
   loadingTxt.textContent = 'Starting…';
   // Scroll the status message into view so it's obvious work has started.
   loading.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -388,6 +434,7 @@ async function runClassify(domainMap, targetUrl, targetRegistered = '', perHost 
       tabId: activeTabId,
     });
     if (!resp) { showError('No response from background worker.'); return; }
+    if (resp.cancelled) { showNotice('Analysis cancelled.'); return; }
     if (resp.error) { showError(resp.error); return; }
     renderResults(resp, perHost);
     // Bring the freshly-rendered results into view.
@@ -445,10 +492,7 @@ function buildTable(items) {
     detailCell.innerHTML = `<div class="url-list">${listHtml}</div>`;
     detailRow.appendChild(detailCell);
 
-    tr.addEventListener('click', () => {
-      const open = tr.classList.toggle('expanded');
-      detailRow.classList.toggle('hidden', !open);
-    });
+    wireExpandable(tr, detailRow, false);
     tbody.appendChild(tr);
     tbody.appendChild(detailRow);
   }
@@ -504,10 +548,7 @@ function buildNestedTable(items) {
     detailCell.innerHTML = `<div class="url-list">${listHtml}</div>`;
     detailRow.appendChild(detailCell);
 
-    tr.addEventListener('click', () => {
-      const open = tr.classList.toggle('expanded');
-      detailRow.classList.toggle('hidden', !open);
-    });
+    wireExpandable(tr, detailRow, false);
     tbody.appendChild(tr);
     tbody.appendChild(detailRow);
   };

@@ -19,6 +19,12 @@
       </div>
     </header>
 
+    <!-- First-run onboarding: shown until an API key is saved -->
+    <div id="apikey-notice" class="apikey-notice hidden">
+      <span>An Anthropic API key is required to analyze domains.</span>
+      <button id="apikey-notice-btn" class="link-btn">Set up your key →</button>
+    </div>
+
     <section class="input-card">
       <!-- Capture mode (primary, always visible) -->
       <div id="capture-mode">
@@ -72,6 +78,7 @@
     <div id="loading" class="loading hidden">
       <div class="spinner"></div>
       <span id="loading-text">Classifying…</span>
+      <button id="cancel-btn" class="btn-ghost btn-sm">Cancel</button>
     </div>
 
     <div id="results" class="hidden">
