@@ -4,7 +4,7 @@ const SYSTEM_PROMPT = `You are helping an internet filtering organization catego
 
 Classify each domain into exactly one of these two categories:
 
-- noise: A service that is clearly optional from the user's perspective — blocking it would not break or visibly degrade the site. This applies regardless of who owns the domain or what site is being analyzed. Examples:
+- noise: A service that is optional from the user's perspective — including advertising, tracking, and analytics — where blocking it would not break or visibly degrade the site. This applies regardless of who owns the domain or what site is being analyzed. Examples:
   - Analytics and telemetry (google-analytics.com, googletagmanager.com, hotjar.com, mixpanel.com, segment.io, amplitude.com, clarity.ms, heap.io, etc.)
   - A/B testing and feature flagging (optimizely.com, vwo.com, launchdarkly.com, growthbook.io, statsig.com, etc.)
   - Advertising and tracking pixels (doubleclick.net, googlesyndication.com, facebook.net, criteo.com, taboola.com, etc.)
@@ -55,14 +55,16 @@ const CLASSIFY_TOOL = {
 // Map<tabId, { capturing: bool, targetUrl: string, targetRegistered: string, domains: Map<domain, DomainInfo> }>
 const captures = new Map();
 
-// Recover persisted capture data after a service worker restart
+// Recover persisted capture data after a service worker restart. The
+// `capturing` flag is restored too, so a capture keeps recording across the
+// MV3 service-worker lifecycle instead of silently stopping on eviction.
 (async () => {
   try {
     const { captureState } = await chrome.storage.session.get('captureState');
     if (captureState) {
       for (const [tabId, data] of Object.entries(captureState)) {
         captures.set(Number(tabId), {
-          capturing: false,
+          capturing: !!data.capturing,
           targetUrl: data.targetUrl || '',
           targetRegistered: data.targetRegistered || '',
           domains: new Map(Object.entries(data.domains || {})),
@@ -76,12 +78,22 @@ async function persistCaptures() {
   const serializable = {};
   for (const [tabId, data] of captures.entries()) {
     serializable[String(tabId)] = {
+      capturing: data.capturing,
       targetUrl: data.targetUrl,
       targetRegistered: data.targetRegistered,
       domains: Object.fromEntries(data.domains.entries()),
     };
   }
   await chrome.storage.session.set({ captureState: serializable }).catch(() => {});
+}
+
+// Coalesce frequent updates (request-count/subdomain growth) into at most one
+// write per second so progress survives a service-worker restart without
+// hammering session storage on every request.
+let persistTimer = null;
+function schedulePersist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => { persistTimer = null; persistCaptures(); }, 1000);
 }
 
 // --- Network capture ---
@@ -114,6 +126,9 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (isNew) {
       persistCaptures();
       chrome.runtime.sendMessage({ type: 'newDomain', tabId, domain: registered }).catch(() => {});
+    } else {
+      // Persist incremental growth (counts/subdomains/urls) on a throttle.
+      schedulePersist();
     }
   },
   { urls: ['<all_urls>'] },
@@ -255,12 +270,30 @@ async function fetchDomainSummary(domain) {
   return '';
 }
 
-// --- AI classification (single API call with pre-fetched summaries) ---
+// Cap the number of domains per AI request. A single 4096-token tool response
+// can't hold classifications for an unbounded list, so large captures are split
+// into batches to avoid silently dropping domains.
+const CLASSIFY_BATCH_SIZE = 40;
+
+// --- AI classification (batched API calls with pre-fetched summaries) ---
 async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabId) {
   if (!domains.length) return {};
 
+  const out = {};
+  const total = domains.length;
+  for (let i = 0; i < total; i += CLASSIFY_BATCH_SIZE) {
+    const batch = domains.slice(i, i + CLASSIFY_BATCH_SIZE);
+    const range = total > CLASSIFY_BATCH_SIZE
+      ? ` (${i + 1}–${Math.min(i + batch.length, total)} of ${total})`
+      : '';
+    Object.assign(out, await classifyBatch(batch, targetUrl, targetRegistered, apiKey, tabId, range));
+  }
+  return out;
+}
+
+async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId, range = '') {
   // Fetch all summaries in parallel — free, no AI tokens consumed
-  sendProgress(tabId, `Looking up ${domains.length} domain(s)…`);
+  sendProgress(tabId, `Looking up ${domains.length} domain(s)${range}…`);
   const settled = await Promise.allSettled(
     domains.map(d => fetchDomainSummary(d).then(s => ({ domain: d, summary: s }))),
   );
@@ -276,7 +309,7 @@ async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabI
     ? `\nNote: the target site's registered domain is "${targetRegistered}". Domains sharing its brand name or clearly serving as its infrastructure should be classified as cdn.`
     : '';
 
-  sendProgress(tabId, `Classifying ${domains.length} domain(s)…`);
+  sendProgress(tabId, `Classifying ${domains.length} domain(s)${range}…`);
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
