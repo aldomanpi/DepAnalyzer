@@ -4,7 +4,7 @@ const SYSTEM_PROMPT = `You are helping an internet filtering organization catego
 
 Classify each domain into exactly one of these two categories:
 
-- noise: A service that is clearly optional from the user's perspective — blocking it would not break or visibly degrade the site. This applies regardless of who owns the domain or what site is being analyzed. Examples:
+- noise: A service that is optional from the user's perspective — including advertising, tracking, and analytics — where blocking it would not break or visibly degrade the site. This applies regardless of who owns the domain or what site is being analyzed. Examples:
   - Analytics and telemetry (google-analytics.com, googletagmanager.com, hotjar.com, mixpanel.com, segment.io, amplitude.com, clarity.ms, heap.io, etc.)
   - A/B testing and feature flagging (optimizely.com, vwo.com, launchdarkly.com, growthbook.io, statsig.com, etc.)
   - Advertising and tracking pixels (doubleclick.net, googlesyndication.com, facebook.net, criteo.com, taboola.com, etc.)
