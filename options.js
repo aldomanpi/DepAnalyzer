@@ -1,11 +1,30 @@
 (async () => {
-  const keyInput   = document.getElementById('api-key');
-  const toggleBtn  = document.getElementById('toggle-vis');
-  const saveBtn    = document.getElementById('save-key');
-  const keyFlash   = document.getElementById('key-flash');
-  const clearBtn   = document.getElementById('clear-cache');
-  const cacheFlash = document.getElementById('cache-flash');
-  const cacheStat  = document.getElementById('cache-size');
+  const keyInput    = document.getElementById('api-key');
+  const saveBtn     = document.getElementById('save-key');
+  const keyFlash    = document.getElementById('key-flash');
+  const clearBtn    = document.getElementById('clear-cache');
+  const cacheFlash  = document.getElementById('cache-flash');
+  const cacheStat   = document.getElementById('cache-size');
+  const themeSelect = document.getElementById('theme-select');
+
+  // ── Theme ──────────────────────────────────────────────────
+  // Persisted in localStorage under 'theme' (shared with the popup, which
+  // reads it via theme-init.js). 'system' means no stored value → follow OS.
+  function applyTheme(value) {
+    const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.dataset.theme = value || (sysDark ? 'dark' : 'light');
+  }
+  themeSelect.value = localStorage.getItem('theme') || 'system';
+  themeSelect.addEventListener('change', () => {
+    const value = themeSelect.value;
+    if (value === 'system') {
+      localStorage.removeItem('theme');
+      applyTheme(null);
+    } else {
+      localStorage.setItem('theme', value);
+      applyTheme(value);
+    }
+  });
 
   // Load saved key
   const { apiKey } = await chrome.storage.local.get('apiKey');
@@ -17,13 +36,6 @@
     cacheStat.textContent = resp?.size ?? '?';
   }
   refreshCacheSize();
-
-  // Show/hide key
-  toggleBtn.addEventListener('click', () => {
-    const isHidden = keyInput.type === 'password';
-    keyInput.type = isHidden ? 'text' : 'password';
-    toggleBtn.textContent = isHidden ? 'Hide' : 'Show';
-  });
 
   function flash(el, cls, msg) {
     el.className = `flash ${cls}`;

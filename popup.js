@@ -1,24 +1,13 @@
 import { getRegisteredDomain } from './lib/domainUtils.js';
 
 // ── Theme ──────────────────────────────────────────────────
-const themeToggle = document.getElementById('theme-toggle');
-
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  themeToggle.textContent = theme === 'dark' ? '☀' : '🌙';
-}
-
-themeToggle.addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  localStorage.setItem('theme', next);
-  applyTheme(next);
-});
-
+// The theme is applied pre-paint by theme-init.js and chosen in Options.
+// Keep following the OS preference when the user hasn't picked one.
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-  if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'dark' : 'light');
+  if (!localStorage.getItem('theme')) {
+    document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
+  }
 });
-
-applyTheme(document.documentElement.dataset.theme || 'light');
 
 // ── Options button ───────────────────────────────────────────
 document.getElementById('options-btn').addEventListener('click', () => {
@@ -33,6 +22,7 @@ const resumeBtn           = document.getElementById('resume-btn');
 const analyzeBtn          = document.getElementById('analyze-captured-btn');
 const clearBtn            = document.getElementById('clear-btn');
 const captureStatus       = document.getElementById('capture-status');
+const subdomainToggle     = document.getElementById('subdomain-toggle');
 const captureDetailsEl    = document.getElementById('capture-details');
 const captureDetailsCount = document.getElementById('capture-details-count');
 const captureDetailsBody  = document.getElementById('capture-details-body');
@@ -68,6 +58,14 @@ document.getElementById('manual-toggle-btn').addEventListener('click', () => {
   btn.setAttribute('aria-expanded', String(opening));
   btn.classList.toggle('open', opening);
   if (opening) clearError();
+});
+
+// ── Subdomain categorization toggle (persisted) ─────────────────
+chrome.storage.local.get('subdomainMode').then(({ subdomainMode }) => {
+  subdomainToggle.checked = !!subdomainMode;
+});
+subdomainToggle.addEventListener('change', () => {
+  chrome.storage.local.set({ subdomainMode: subdomainToggle.checked });
 });
 
 // ── Capture state UI ───────────────────────────────────────────
@@ -275,17 +273,51 @@ clearBtn.addEventListener('click', async () => {
 analyzeBtn.addEventListener('click', () => runAnalyzeCapture());
 
 // ── Analyze captured domains with AI ───────────────────────────
+// Expand one captured registered-domain entry into the registered domain
+// itself PLUS one entry per individual subdomain hostname. Uses the
+// background's per-host request counts; falls back to deriving hosts from
+// captured URLs/subdomains for captures made before hostCounts existed.
+function expandToHosts({ domain, subdomains, requestCount, urls, hostCounts }, out) {
+  // Registered-domain (apex) row — always included.
+  out[domain] = { subdomains: subdomains || [], requestCount: requestCount || 0, urls: urls || [] };
+
+  const counts = hostCounts && Object.keys(hostCounts).length ? hostCounts : null;
+  const hosts = new Set(counts ? Object.keys(counts) : (subdomains || []));
+  if (!counts) {
+    for (const u of urls || []) {
+      try { hosts.add(new URL(u).hostname); } catch {}
+    }
+  }
+  for (const h of hosts) {
+    if (h === domain) continue; // already covered by the apex row
+    const hostUrls = (urls || []).filter(u => {
+      try { return new URL(u).hostname === h; } catch { return false; }
+    });
+    out[h] = {
+      subdomains: [],
+      requestCount: counts ? (counts[h] || 0) : Math.max(hostUrls.length, 1),
+      urls: hostUrls,
+    };
+  }
+}
+
 async function runAnalyzeCapture() {
   clearError();
   const resp = await chrome.runtime.sendMessage({ type: 'getCapture', tabId: activeTabId });
   if (!resp?.domains?.length) { showError('No domains captured yet.'); return; }
 
+  const perHost = subdomainToggle.checked;
   const domainMap = {};
-  for (const { domain, subdomains, requestCount, urls } of resp.domains) {
-    domainMap[domain] = { subdomains, requestCount, urls };
+  for (const entry of resp.domains) {
+    if (perHost) {
+      expandToHosts(entry, domainMap);
+    } else {
+      const { domain, subdomains, requestCount, urls } = entry;
+      domainMap[domain] = { subdomains, requestCount, urls };
+    }
   }
   // Pass the stored targetRegistered directly — avoids URL re-parsing errors
-  await runClassify(domainMap, resp.targetUrl || activeTabUrl, resp.targetRegistered || '');
+  await runClassify(domainMap, resp.targetUrl || activeTabUrl, resp.targetRegistered || '', perHost);
 }
 
 // ── Manual URL categorization ─────────────────────────────────
@@ -318,23 +350,34 @@ categBtn.addEventListener('click', async () => {
   const hostnames = parseDomainList(text);
   if (!hostnames.length) { showError('No valid domains found in input.'); return; }
 
+  const perHost = subdomainToggle.checked;
   const domainMap = {};
   for (const h of hostnames) {
     const reg = getRegisteredDomain(h) || h;
+    // Registered-domain (grouped) entry — always present.
     if (!domainMap[reg]) domainMap[reg] = { subdomains: [], requestCount: 0, urls: [] };
     domainMap[reg].requestCount++;
     domainMap[reg].urls.push(`https://${h}`);
     if (h !== reg && !domainMap[reg].subdomains.includes(h)) domainMap[reg].subdomains.push(h);
+
+    // In subdomain mode, also classify the full hostname on its own.
+    if (perHost && h !== reg) {
+      if (!domainMap[h]) domainMap[h] = { subdomains: [], requestCount: 0, urls: [] };
+      domainMap[h].requestCount++;
+      domainMap[h].urls.push(`https://${h}`);
+    }
   }
 
-  await runClassify(domainMap, '', '');
+  await runClassify(domainMap, '', '', perHost);
 });
 
 // ── Common classify runner ─────────────────────────────────────
-async function runClassify(domainMap, targetUrl, targetRegistered = '') {
+async function runClassify(domainMap, targetUrl, targetRegistered = '', perHost = false) {
   results.classList.add('hidden');
   loading.classList.remove('hidden');
   loadingTxt.textContent = 'Starting…';
+  // Scroll the status message into view so it's obvious work has started.
+  loading.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
   try {
     const resp = await chrome.runtime.sendMessage({
@@ -346,7 +389,9 @@ async function runClassify(domainMap, targetUrl, targetRegistered = '') {
     });
     if (!resp) { showError('No response from background worker.'); return; }
     if (resp.error) { showError(resp.error); return; }
-    renderResults(resp);
+    renderResults(resp, perHost);
+    // Bring the freshly-rendered results into view.
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     showError('Error: ' + e.message);
   } finally {
@@ -411,7 +456,84 @@ function buildTable(items) {
   return table;
 }
 
-function buildSection(label, icon, items, isNoise) {
+// Subdomain mode: nest each subdomain under its registered (apex) domain,
+// mirroring the actual domain hierarchy. `items` all share one category.
+function buildNestedTable(items) {
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Domain / Subdomain</th>
+        <th class="right">Requests</th>
+      </tr>
+    </thead>`;
+  const tbody = document.createElement('tbody');
+
+  // Group by registered domain; the apex item (domain === registered) is the
+  // parent, everything else nests beneath it.
+  const groups = new Map();
+  for (const item of items) {
+    const reg = getRegisteredDomain(item.domain) || item.domain;
+    if (!groups.has(reg)) groups.set(reg, { reg, apex: null, children: [] });
+    const g = groups.get(reg);
+    if (item.domain === reg) g.apex = item;
+    else g.children.push(item);
+  }
+
+  const addDataRow = (item, isChild) => {
+    const tr = document.createElement('tr');
+    tr.className = 'domain-row' + (isChild ? ' child' : '');
+    const impactHtml = item.impact
+      ? `<div class="domain-reason">${esc(item.impact)}</div>` : '';
+    tr.innerHTML = `
+      <td class="domain-cell">
+        <span class="expand-icon">▸</span><strong>${esc(item.domain)}</strong>${impactHtml}
+      </td>
+      <td class="right">${item.request_count}</td>`;
+
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'url-detail hidden';
+    const detailCell = document.createElement('td');
+    detailCell.colSpan = 2;
+    const paths = (item.urls || []).map(u => {
+      try { const p = new URL(u); return p.host + p.pathname + p.search + p.hash; } catch { return u; }
+    });
+    const listHtml = paths.length
+      ? paths.map(p => `<div class="url-entry">${esc(p)}</div>`).join('')
+      : '<div class="url-entry muted">No paths recorded.</div>';
+    detailCell.innerHTML = `<div class="url-list">${listHtml}</div>`;
+    detailRow.appendChild(detailCell);
+
+    tr.addEventListener('click', () => {
+      const open = tr.classList.toggle('expanded');
+      detailRow.classList.toggle('hidden', !open);
+    });
+    tbody.appendChild(tr);
+    tbody.appendChild(detailRow);
+  };
+
+  const sortedGroups = [...groups.values()].sort((a, b) => a.reg.localeCompare(b.reg));
+  for (const g of sortedGroups) {
+    if (g.apex) {
+      addDataRow(g.apex, false);
+    } else {
+      // Apex was classified in a different category — show a structural
+      // label row so the subdomains still read as nested under their domain.
+      const tr = document.createElement('tr');
+      tr.className = 'group-label-row';
+      tr.innerHTML =
+        `<td class="domain-cell"><strong>${esc(g.reg)}</strong></td><td></td>`;
+      tbody.appendChild(tr);
+    }
+    for (const child of g.children.sort((a, b) => a.domain.localeCompare(b.domain))) {
+      addDataRow(child, true);
+    }
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+function buildSection(label, icon, items, isNoise, perHost = false) {
   const section = document.createElement('div');
   section.className = 'category-section' + (isNoise ? ' noise' : '');
   const header = document.createElement('div');
@@ -421,11 +543,11 @@ function buildSection(label, icon, items, isNoise) {
     <span class="cat-label">${label}</span>
     <span class="badge">${items.length}</span>`;
   section.appendChild(header);
-  section.appendChild(buildTable(items));
+  section.appendChild(perHost ? buildNestedTable(items) : buildTable(items));
   return section;
 }
 
-function renderResults(data) {
+function renderResults(data, perHost = false) {
   depSects.innerHTML = '';
   noiseSects.innerHTML = '';
   whitelistDomains = [];
@@ -449,21 +571,22 @@ function renderResults(data) {
   for (const cat of orderedCats) {
     const items = grouped[cat];
     if (!items) continue;
-    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false));
+    depSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, false, perHost));
   }
 
   let noiseCount = 0;
   for (const cat of Object.keys(noisyGrouped)) {
     const items = noisyGrouped[cat];
     noiseCount += items.length;
-    noiseSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true));
+    noiseSects.appendChild(buildSection(items[0].label, CATEGORY_ICONS[cat] || '❓', items, true, perHost));
   }
   noiseBadge.textContent = noiseCount;
 
   const cleanCount = data.results.filter(r => !r.is_noise).length;
+  const unitLabel  = perHost ? 'host' : 'domain';
   summary.innerHTML =
     `Analyzed <strong>${esc(data.target)}</strong> — ` +
-    `<strong>${cleanCount}</strong> meaningful + <strong>${noiseCount}</strong> noise`;
+    `<strong>${cleanCount}</strong> meaningful + <strong>${noiseCount}</strong> noise ${unitLabel}(s)`;
 
   results.classList.remove('hidden');
 }

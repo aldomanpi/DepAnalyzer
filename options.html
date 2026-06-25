@@ -4,36 +4,48 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DepAnalyzer — Options</title>
+  <script src="theme-init.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #f4f6f9; --surface: #fff; --border: #e2e8f0;
-      --text: #1a1a2e; --text-2: #475569; --text-3: #64748b; --text-4: #94a3b8;
+      --bg: #f4f6f9; --surface: #fff; --surface-alt: #f8fafc; --border: #e2e8f0;
+      --text: #1a1a2e; --text-heading: #0f172a;
+      --text-2: #475569; --text-3: #64748b; --text-4: #94a3b8;
       --accent: #3b82f6; --accent-hover: #2563eb; --accent-bg: #eff6ff;
       --input-border: #cbd5e1; --input-text: #1e293b;
       --success-bg: #f0fdf4; --success-border: #bbf7d0; --success-text: #166534;
       --error-bg: #fef2f2; --error-border: #fecaca; --error-text: #991b1b;
+      --danger: #dc2626; --danger-border: #fca5a5;
+    }
+    [data-theme="dark"] {
+      --bg: #0f172a; --surface: #1e293b; --surface-alt: #243347; --border: #334155;
+      --text: #e2e8f0; --text-heading: #f1f5f9;
+      --text-2: #94a3b8; --text-3: #7a8fa6; --text-4: #64748b;
+      --accent: #60a5fa; --accent-hover: #93c5fd; --accent-bg: #1e3a5f;
+      --input-border: #334155; --input-text: #e2e8f0;
+      --success-bg: #052e16; --success-border: #166534; --success-text: #86efac;
+      --error-bg: #450a0a; --error-border: #7f1d1d; --error-text: #fca5a5;
+      --danger: #f87171; --danger-border: #7f1d1d;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px; background: var(--bg); color: var(--text); line-height: 1.5;
     }
     .page { max-width: 540px; margin: 48px auto; padding: 0 24px 64px; }
-    h1 { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    h1 { font-size: 20px; font-weight: 700; color: var(--text-heading); margin-bottom: 4px; }
     .page-subtitle { color: var(--text-3); font-size: 13px; margin-bottom: 28px; }
 
     .card {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 10px; padding: 20px; margin-bottom: 16px;
     }
-    .card h2 { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 14px; }
+    .card h2 { font-size: 14px; font-weight: 700; color: var(--text-heading); margin-bottom: 14px; }
 
     .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
     .field label {
       font-size: 11px; font-weight: 600; color: var(--text-2);
       text-transform: uppercase; letter-spacing: .04em;
     }
-    .input-row { display: flex; gap: 8px; }
     input[type="password"], input[type="text"] {
       flex: 1; padding: 8px 11px;
       border: 1px solid var(--input-border); border-radius: 6px;
@@ -43,6 +55,19 @@
     }
     input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
     .hint { font-size: 11px; color: var(--text-4); margin-top: 3px; }
+
+    .setup-steps {
+      margin: 0 0 16px 18px; padding: 0;
+      font-size: 13px; color: var(--text-2); line-height: 1.7;
+    }
+    .setup-steps li { margin-bottom: 2px; }
+    .setup-steps a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .setup-steps a:hover { text-decoration: underline; }
+    .setup-steps code {
+      font-family: 'Menlo', 'Consolas', monospace; font-size: 12px;
+      background: var(--accent-bg); color: var(--accent-hover);
+      padding: 1px 4px; border-radius: 4px;
+    }
 
     .btn {
       padding: 7px 16px;
@@ -56,16 +81,24 @@
       background: none; color: var(--text-3);
       border: 1px solid var(--border);
     }
-    .btn-ghost:hover { background: #f8fafc; color: var(--text-2); }
+    .btn-ghost:hover { background: var(--surface-alt); color: var(--text-2); }
     .btn-danger {
-      background: none; color: #dc2626;
-      border: 1px solid #fca5a5;
+      background: none; color: var(--danger);
+      border: 1px solid var(--danger-border);
     }
-    .btn-danger:hover { background: #fef2f2; }
+    .btn-danger:hover { background: var(--error-bg); }
+
+    select {
+      width: 100%; padding: 8px 11px;
+      border: 1px solid var(--input-border); border-radius: 6px;
+      font-size: 13px; color: var(--input-text); background: var(--surface);
+      outline: none; cursor: pointer; transition: border-color .15s;
+    }
+    select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
 
     .cache-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .cache-stat { font-size: 13px; color: var(--text-2); }
-    .cache-stat strong { color: #0f172a; }
+    .cache-stat strong { color: var(--text-heading); }
 
     .flash {
       padding: 9px 13px;
@@ -85,16 +118,32 @@
 
     <div class="card">
       <h2>Anthropic API Key</h2>
+      <ol class="setup-steps">
+        <li>Create a free account at <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>.</li>
+        <li>Add credit under <strong>Billing</strong> (classification uses the low-cost Claude Haiku model).</li>
+        <li>Open <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API Keys</a> and click <strong>Create Key</strong>.</li>
+        <li>Copy the key (it starts with <code>sk-ant-</code>) and paste it below.</li>
+      </ol>
       <div class="field">
         <label for="api-key">API Key</label>
-        <div class="input-row">
-          <input type="password" id="api-key" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
-          <button class="btn btn-ghost" id="toggle-vis" title="Show / hide key">Show</button>
-        </div>
+        <input type="password" id="api-key" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
         <span class="hint">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</span>
       </div>
       <button class="btn" id="save-key">Save key</button>
       <div class="flash" id="key-flash"></div>
+    </div>
+
+    <div class="card">
+      <h2>Appearance</h2>
+      <div class="field" style="margin-bottom:0;">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select">
+          <option value="system">System default</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+        <span class="hint">Applies to the popup and this settings page.</span>
+      </div>
     </div>
 
     <div class="card">
