@@ -1,24 +1,13 @@
 import { getRegisteredDomain } from './lib/domainUtils.js';
 
 // ── Theme ──────────────────────────────────────────────────
-const themeToggle = document.getElementById('theme-toggle');
-
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  themeToggle.textContent = theme === 'dark' ? '☀' : '🌙';
-}
-
-themeToggle.addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  localStorage.setItem('theme', next);
-  applyTheme(next);
-});
-
+// The theme is applied pre-paint by theme-init.js and chosen in Options.
+// Keep following the OS preference when the user hasn't picked one.
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-  if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'dark' : 'light');
+  if (!localStorage.getItem('theme')) {
+    document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
+  }
 });
-
-applyTheme(document.documentElement.dataset.theme || 'light');
 
 // ── Options button ───────────────────────────────────────────
 document.getElementById('options-btn').addEventListener('click', () => {

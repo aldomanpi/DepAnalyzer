@@ -89,7 +89,7 @@ header {
 }
 .header-actions { display: flex; gap: 5px; flex-shrink: 0; }
 
-.icon-btn, .theme-toggle {
+.icon-btn {
   padding: 4px 8px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -100,7 +100,7 @@ header {
   line-height: 1;
   transition: background .15s;
 }
-.icon-btn:hover, .theme-toggle:hover { background: var(--surface-alt); }
+.icon-btn:hover { background: var(--surface-alt); }
 
 /* ── Input card ───────────────────────────────────────────────────── */
 .input-card {
