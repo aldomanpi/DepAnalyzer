@@ -151,7 +151,7 @@ function buildCaptureTable(domains) {
     const tr = document.createElement('tr');
     tr.className = 'domain-row' + (isOpen ? ' expanded' : '');
     const subs = (subdomains || []).length
-      ? subdomains.join(', ')
+      ? subdomains.map(esc).join(', ')
       : '<span class="muted">—</span>';
     tr.innerHTML = `
       <td class="domain-cell">
@@ -421,7 +421,7 @@ function buildTable(items) {
     const tr = document.createElement('tr');
     tr.className = 'domain-row';
     const subs = item.subdomains.length
-      ? item.subdomains.join(', ')
+      ? item.subdomains.map(esc).join(', ')
       : '<span class="muted">—</span>';
     const impactHtml = item.impact
       ? `<div class="domain-reason">${esc(item.impact)}</div>` : '';

@@ -1,4 +1,12 @@
-// DepAnalyzer — Cloudflare Worker
+// DepAnalyzer — Cloudflare Worker (OPTIONAL / EXPERIMENTAL backend)
+//
+// NOT part of the published browser extension and NOT called by it. The
+// shipped extension talks to api.anthropic.com directly with the user's own
+// key (see background.js). This worker is a separate, self-hosted backend for
+// a future hosted/paid tier and uses a DIFFERENT classification taxonomy
+// (functional/observational/ubiquitous) than the extension (first_party/cdn/
+// noise) — the popup cannot consume these responses as-is. Exclude the
+// worker/ directory when packaging the extension for the Web Store.
 //
 // Setup:
 //   1. wrangler kv:namespace create KV
