@@ -109,6 +109,10 @@
     }
     .flash.success { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-text); display: block; }
     .flash.error   { background: var(--error-bg);   border: 1px solid var(--error-border);   color: var(--error-text);   display: block; }
+
+    .credit { text-align: center; font-size: 12px; color: var(--text-4); margin-top: 8px; }
+    .credit a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .credit a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -157,6 +161,11 @@
       </div>
       <div class="flash" id="cache-flash"></div>
     </div>
+
+    <p class="credit">
+      DepAnalyzer — created by
+      <a href="https://github.com/aldomanpi" target="_blank" rel="noopener">@aldomanpi</a>
+    </p>
   </div>
 
   <script src="options.js"></script>
