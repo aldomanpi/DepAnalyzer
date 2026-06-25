@@ -190,20 +190,7 @@ header {
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
-/* ── Live discovery (chips, shown while capturing) ──────────────────── */
-.live-discovery {
-  background: var(--surface-alt2);
-  border: 1px solid var(--border-sub);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.live-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--border-sub);
-}
+/* ── Section label (capture details header) ─────────────────────────── */
 .live-label {
   font-size: 10px;
   font-weight: 600;
@@ -211,25 +198,6 @@ header {
   text-transform: uppercase;
   letter-spacing: .04em;
   flex: 1;
-}
-.live-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 7px 10px;
-  min-height: 32px;
-  max-height: 100px;
-  overflow-y: auto;
-}
-.live-chip {
-  padding: 2px 8px;
-  background: var(--accent-bg);
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  border-radius: 99px;
-  font-family: 'Menlo', 'Consolas', monospace;
-  font-size: 10px;
-  white-space: nowrap;
 }
 
 /* ── Capture details table (shown after stopping, before/without AI) ────── */

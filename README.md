@@ -49,8 +49,8 @@ URL and link it in your Web Store listing.
 
 ## Packaging for the Chrome Web Store
 
-Build a clean zip that contains **only** the extension files (the `worker/`
-backend, docs, and tooling are excluded):
+Build a clean zip that contains **only** the extension files (docs and tooling
+are excluded):
 
 ```sh
 ./package.sh           # produces dist/depanalyzer-<version>.zip
@@ -59,13 +59,6 @@ backend, docs, and tooling are excluded):
 Upload the resulting zip to the Web Store. Remember to: bump `version` in
 `manifest.json`, provide screenshots, and supply the privacy-policy URL plus a
 justification for the broad host permission (see the table above).
-
-## Optional hosted backend (`worker/`)
-
-`worker/` is a **separate, experimental** Cloudflare Worker for a future hosted
-tier. It is **not** part of the published extension, is **not** called by it,
-and uses a different classification taxonomy. It is excluded from the packaged
-zip. Ignore it unless you intend to build a hosted backend.
 
 ## Credit
 

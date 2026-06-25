@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build a clean Chrome Web Store zip containing ONLY the extension files.
-# Excludes the optional Cloudflare worker, docs, and tooling.
+# Docs and tooling are excluded.
 set -euo pipefail
 cd "$(dirname "$0")"
 
