@@ -14,18 +14,6 @@ document.getElementById('options-btn').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
-// ── API key onboarding ───────────────────────────────────────
-// Surface a prompt when no key is set, instead of only failing at analyze time.
-async function refreshApiKeyNotice() {
-  const { apiKey } = await chrome.storage.local.get('apiKey');
-  apikeyNotice.classList.toggle('hidden', !!apiKey);
-}
-refreshApiKeyNotice();
-apikeyNoticeBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.apiKey) refreshApiKeyNotice();
-});
-
 // ── Elements ────────────────────────────────────────────────
 const tabUrlEl            = document.getElementById('tab-url');
 const startBtn            = document.getElementById('start-btn');
@@ -81,6 +69,18 @@ chrome.storage.local.get('subdomainMode').then(({ subdomainMode }) => {
 });
 subdomainToggle.addEventListener('change', () => {
   chrome.storage.local.set({ subdomainMode: subdomainToggle.checked });
+});
+
+// ── API key onboarding ───────────────────────────────────────
+// Surface a prompt when no key is set, instead of only failing at analyze time.
+async function refreshApiKeyNotice() {
+  const { apiKey } = await chrome.storage.local.get('apiKey');
+  apikeyNotice.classList.toggle('hidden', !!apiKey);
+}
+refreshApiKeyNotice();
+apikeyNoticeBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.apiKey) refreshApiKeyNotice();
 });
 
 // ── Capture state UI ───────────────────────────────────────────
