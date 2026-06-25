@@ -55,6 +55,17 @@ const CLASSIFY_TOOL = {
 // Map<tabId, { capturing: bool, targetUrl: string, targetRegistered: string, domains: Map<domain, DomainInfo> }>
 const captures = new Map();
 
+// In-flight classify operations, so the popup can cancel a long AI run.
+// Map<tabId, AbortController>
+const inflight = new Map();
+
+// --- Toolbar badge: live captured-domain count, per tab ---
+chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' }).catch(() => {});
+function updateBadge(tabId, count) {
+  if (tabId == null || tabId < 0) return;
+  chrome.action.setBadgeText({ tabId, text: count > 0 ? String(count) : '' }).catch(() => {});
+}
+
 // Recover persisted capture data after a service worker restart. The
 // `capturing` flag is restored too, so a capture keeps recording across the
 // MV3 service-worker lifecycle instead of silently stopping on eviction.
@@ -63,12 +74,14 @@ const captures = new Map();
     const { captureState } = await chrome.storage.session.get('captureState');
     if (captureState) {
       for (const [tabId, data] of Object.entries(captureState)) {
+        const domains = new Map(Object.entries(data.domains || {}));
         captures.set(Number(tabId), {
           capturing: !!data.capturing,
           targetUrl: data.targetUrl || '',
           targetRegistered: data.targetRegistered || '',
-          domains: new Map(Object.entries(data.domains || {})),
+          domains,
         });
+        updateBadge(Number(tabId), domains.size); // restore badge after SW restart
       }
     }
   } catch {}
@@ -125,6 +138,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
     if (isNew) {
       persistCaptures();
+      updateBadge(tabId, state.domains.size);
       chrome.runtime.sendMessage({ type: 'newDomain', tabId, domain: registered }).catch(() => {});
     } else {
       // Persist incremental growth (counts/subdomains/urls) on a throttle.
@@ -137,6 +151,17 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.tabs.onRemoved.addListener((tabId) => {
   captures.delete(tabId);
   persistCaptures();
+});
+
+// Re-assert the badge after a captured tab navigates. Chrome can drop the
+// per-tab badge on navigation, and we otherwise only repaint it when a brand-
+// new domain is seen — so a new page that re-contacts already-seen domains
+// would leave the badge blank. Capture itself continues across navigations
+// (state is keyed by tabId and survives in memory + session storage).
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!changeInfo.status) return; // only react to load-lifecycle changes
+  const s = captures.get(tabId);
+  if (s) updateBadge(tabId, s.domains.size);
 });
 
 // --- Message handler ---
@@ -156,6 +181,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       domains: new Map(),
     });
     persistCaptures();
+    updateBadge(tabId, 0);
     sendResponse({ ok: true });
     return;
   }
@@ -189,15 +215,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'clearCapture') {
     captures.delete(tabId);
     persistCaptures();
+    updateBadge(tabId, 0);
     sendResponse({ ok: true });
     return;
   }
 
   if (msg.type === 'classify') {
-    classify(msg.domainMap, msg.targetUrl, msg.tabId, msg.targetRegistered || '')
+    const controller = new AbortController();
+    inflight.set(tabId, controller);
+    classify(msg.domainMap, msg.targetUrl, tabId, msg.targetRegistered || '', controller.signal)
       .then(result => sendResponse({ ok: true, ...result }))
-      .catch(e => sendResponse({ error: e.message }));
+      .catch(e => {
+        if (e.name === 'AbortError') sendResponse({ cancelled: true });
+        else sendResponse({ error: friendlyError(e) });
+      })
+      .finally(() => inflight.delete(tabId));
     return true; // keep channel open for async response
+  }
+
+  if (msg.type === 'cancelClassify') {
+    inflight.get(tabId)?.abort();
+    sendResponse({ ok: true });
+    return;
   }
 
   if (msg.type === 'clearCache') {
@@ -221,17 +260,43 @@ async function getApiKey() {
   return apiKey || '';
 }
 
+// Classifications are cached for this long, then re-checked so a domain that
+// changes purpose doesn't stay misclassified forever.
+const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
 async function getCache() {
   const { domainCache } = await chrome.storage.local.get('domainCache');
   return domainCache || {};
 }
 
+// A cache entry is stale once it's older than the TTL. Entries written before
+// timestamps existed (no `ts`) are treated as fresh and re-stamped on next save.
+function isStale(entry) {
+  return !!entry?.ts && (Date.now() - entry.ts) > CACHE_TTL_MS;
+}
+
 async function saveToCache(entries) {
   const cache = await getCache();
+  const ts = Date.now();
   for (const { domain, category, impact } of entries) {
-    cache[domain] = { category, impact };
+    cache[domain] = { category, impact, ts };
   }
   await chrome.storage.local.set({ domainCache: cache });
+}
+
+// Map an error to a user-friendly message for the popup.
+function friendlyError(e) {
+  if (e?.message && /failed to fetch|networkerror/i.test(e.message)) {
+    return 'Network error reaching the API — check your connection and try again.';
+  }
+  return e?.message || 'Something went wrong.';
+}
+
+function mapHttpError(status, apiMsg) {
+  if (status === 401 || status === 403) return 'Invalid or expired API key — check it in Options.';
+  if (status === 429) return 'Anthropic rate limit reached — wait a moment and try again.';
+  if (status >= 500) return 'Anthropic is temporarily unavailable — try again shortly.';
+  return apiMsg || `Anthropic API error ${status}`;
 }
 
 function sendProgress(tabId, status) {
@@ -276,22 +341,23 @@ async function fetchDomainSummary(domain) {
 const CLASSIFY_BATCH_SIZE = 40;
 
 // --- AI classification (batched API calls with pre-fetched summaries) ---
-async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabId) {
+async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabId, signal) {
   if (!domains.length) return {};
 
   const out = {};
   const total = domains.length;
   for (let i = 0; i < total; i += CLASSIFY_BATCH_SIZE) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const batch = domains.slice(i, i + CLASSIFY_BATCH_SIZE);
     const range = total > CLASSIFY_BATCH_SIZE
       ? ` (${i + 1}–${Math.min(i + batch.length, total)} of ${total})`
       : '';
-    Object.assign(out, await classifyBatch(batch, targetUrl, targetRegistered, apiKey, tabId, range));
+    Object.assign(out, await classifyBatch(batch, targetUrl, targetRegistered, apiKey, tabId, range, signal));
   }
   return out;
 }
 
-async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId, range = '') {
+async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId, range = '', signal) {
   // Fetch all summaries in parallel — free, no AI tokens consumed
   sendProgress(tabId, `Looking up ${domains.length} domain(s)${range}…`);
   const settled = await Promise.allSettled(
@@ -331,11 +397,12 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
         content: `Target site: ${targetUrl || '(unknown)'}${targetHint}\n\nClassify these third-party domains:\n${domainLines}`,
       }],
     }),
+    signal,
   });
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ error: { message: `HTTP ${resp.status}` } }));
-    throw new Error(err.error?.message || `Anthropic API error ${resp.status}`);
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(mapHttpError(resp.status, err.error?.message));
   }
 
   const data = await resp.json();
@@ -351,9 +418,9 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
 
 const CATEGORY_LABELS = { first_party: 'First Party', cdn: 'CDN / Dependencies', noise: 'Noise' };
 
-async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '') {
+async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '', signal) {
   const apiKey = await getApiKey();
-  if (!apiKey) throw new Error('API key not configured — open extension Options to set it.');
+  if (!apiKey) throw new Error('No Anthropic API key set — open Options to add one.');
 
   const cache = await getCache();
 
@@ -375,8 +442,9 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
 
   const allDomains = Object.keys(domainMap);
   const thirdParty = allDomains.filter(d => !isTargetParty(d));
-  const cached   = thirdParty.filter(d =>  (d in cache));
-  const uncached = thirdParty.filter(d => !(d in cache));
+  // Cache hit only if present AND not past its TTL — stale entries get refreshed.
+  const cached   = thirdParty.filter(d =>  (d in cache) && !isStale(cache[d]));
+  const uncached = thirdParty.filter(d => !(d in cache) ||  isStale(cache[d]));
 
   if (!uncached.length) {
     sendProgress(tabId, `All ${cached.length} domain(s) found in cache…`);
@@ -388,7 +456,7 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
 
   let aiResults = {};
   if (uncached.length) {
-    aiResults = await classifyWithAI(uncached, targetUrl, targetRegistered, apiKey, tabId);
+    aiResults = await classifyWithAI(uncached, targetUrl, targetRegistered, apiKey, tabId, signal);
     await saveToCache(
       Object.entries(aiResults).map(([domain, { category, impact }]) => ({ domain, category, impact })),
     );
