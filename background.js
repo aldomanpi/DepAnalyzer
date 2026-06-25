@@ -4,21 +4,22 @@ const SYSTEM_PROMPT = `You are helping an internet filtering organization catego
 
 Classify each domain into exactly one of these three categories:
 
-- common: A ubiquitous, widely-used service or public CDN that appears across a large fraction of all websites and is therefore typically already permitted globally — so it does NOT need to be added to a per-site allowlist. These ARE real, functional dependencies (blocking them can break sites); they belong here because of their ubiquity, NOT because they are safe to block. Examples:
+- generic: A widely-used third-party service or provider that many different websites rely on — a common building block of the web — and is therefore typically already permitted globally, so it does NOT need to be added to a per-site allowlist. These ARE real, functional dependencies (blocking them can break the site); they belong here because the SERVICE is widely used, NOT because it is safe to block. This applies regardless of which site is being analyzed:
   - Public open-source CDNs (cdnjs.cloudflare.com, jsdelivr.net, unpkg.com, bootstrapcdn.com)
-  - Google shared/static infrastructure (gstatic.com, www.gstatic.com, fonts.googleapis.com, fonts.gstatic.com, ajax.googleapis.com)
-  - Near-universal third-party services (stripe.com, js.stripe.com, google.com/recaptcha, www.gstatic.com/recaptcha, maps.googleapis.com, youtube.com / ytimg.com embeds, gravatar.com)
-  - Ubiquitous edge/CDN endpoints (cloudflare, akamai, fastly, cloudfront) when serving widely-shared libraries or assets
+  - Shared static/CDN infrastructure (gstatic.com, fonts.googleapis.com, fonts.gstatic.com, ajax.googleapis.com; cloudflare/akamai/fastly/cloudfront edges serving shared assets)
+  - Widely-used payment processors and gateways (stripe.com, js.stripe.com, paypal.com, braintree-api.com, braintreegateway.com, adyen.com, checkout.com, and Apple Pay endpoints such as apple.com / cdn-apple.com / applepay.cdn-apple.com)
+  - Common auth, identity, and bot-protection providers (accounts.google.com, auth0.com, okta.com, recaptcha, hcaptcha.com)
+  - Common maps, fonts, embeds, and media providers (maps.googleapis.com, youtube.com / ytimg.com, vimeo.com, gravatar.com, typekit.net)
 
-- specific: A functional dependency that is specific to THIS site or a narrow set of sites, and would not already be allowed everywhere. Blocking it would break or noticeably degrade the site. Includes the site's own CDN, media/asset servers, API backends, URL shorteners, or redirect domains (even under a different domain name), and third-party providers it specifically integrates (a particular payment, auth, video, or maps provider that is not in the ubiquitous set above).
+- specific: A functional dependency that belongs to THIS site itself — not a service that many other sites also use. This is mainly the site's own infrastructure under a different domain name: its own CDN, media/asset servers, API backends, search/recommendation services, URL shorteners, or redirect domains. Choose specific ONLY when the domain is the site's own infrastructure or a niche provider used by very few sites — NOT for well-known third-party providers, which are generic.
 
-- noise: An optional service that does not affect what the user sees or can do — blocking it would not break or visibly degrade the site. This includes advertising, tracking, analytics, telemetry, A/B testing, error monitoring, session recording, chat widgets, social embeds/pixels, and consent management. Examples: google-analytics.com, googletagmanager.com, doubleclick.net, googlesyndication.com, hotjar.com, mixpanel.com, segment.io, facebook.net, criteo.com, taboola.com, sentry.io, datadoghq.com, intercom.io, drift.com, onetrust.com, cookiebot.com.
+- noise: An optional service that does not affect what the user sees or can do — blocking it would not break or visibly degrade the site. This includes advertising, tracking, web analytics, telemetry, performance/RUM monitoring, A/B testing, error monitoring, session recording, chat widgets, social embeds/pixels, and consent management — even when the vendor's data is described as "specific to this site." Examples: google-analytics.com, googletagmanager.com, doubleclick.net, hotjar.com, segment.io, facebook.net, sentry.io, datadoghq.com, btttag.com / Blue Triangle and similar RUM vendors, intercom.io, onetrust.com.
 
 Critical rules:
-1. Classify by what the domain IS and how widely it is used, not by who owns it. google-analytics.com is always noise even on google.com.
-2. common vs specific: if the service is ubiquitous across the web (already allowed almost everywhere), choose common; if it is particular to this site or a narrow set of sites, choose specific.
-3. When uncertain between specific and noise, choose specific — treat it as a needed dependency rather than risk breaking the site.
-4. A domain delivering the site's own content, images, video, or user data is specific (or common only if it is a ubiquitous shared CDN), never noise.`;
+1. Classify by what the service IS and how widely it is used across the web, not by who integrated it or which site is being analyzed. A payment gateway like Braintree or Apple Pay is generic on every site that uses it.
+2. generic vs specific: if the SERVICE is a recognizable third-party provider used across many websites (payments, auth, CDNs, fonts, maps, captcha, embeds), choose generic. Choose specific only for the site's own infrastructure or a niche dependency particular to this site.
+3. Performance monitoring, RUM, and analytics are noise even when the data is described as "specific to this site."
+4. When genuinely uncertain between specific and noise, choose specific — treat it as a needed dependency rather than risk breaking the site.`;
 
 const CLASSIFY_TOOL = {
   name: 'classify_domains',
@@ -33,9 +34,9 @@ const CLASSIFY_TOOL = {
           type: 'object',
           properties: {
             domain:   { type: 'string' },
-            category: { type: 'string', enum: ['common', 'specific', 'noise'],
-                        description: 'common = ubiquitous, already-allowed dependency; specific = site-specific functional dependency; noise = optional (ads/tracking/analytics).' },
-            impact:   { type: 'string', description: 'One neutral sentence describing what this service does and what depends on it. Do not claim blocking is safe for common or specific domains.' },
+            category: { type: 'string', enum: ['generic', 'specific', 'noise'],
+                        description: 'generic = widely-used third-party provider (already allowed everywhere); specific = the site\'s own infrastructure; noise = optional (ads/tracking/analytics/monitoring).' },
+            impact:   { type: 'string', description: 'One neutral sentence describing what this service does and what depends on it. Do not claim blocking is safe for generic or specific domains.' },
           },
           required: ['domain', 'category', 'impact'],
         },
@@ -260,10 +261,9 @@ async function getApiKey() {
 const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 // Versioned cache key. Bumped when category semantics change so stale entries
-// (e.g. public CDNs previously cached as 'noise') aren't reused. The old
-// 'domainCache' is dropped on startup to reclaim space.
-const CACHE_KEY = 'domainCache_v2';
-chrome.storage.local.remove('domainCache').catch(() => {});
+// aren't reused. Superseded keys are dropped on startup to reclaim space.
+const CACHE_KEY = 'domainCache_v3';
+chrome.storage.local.remove(['domainCache', 'domainCache_v2']).catch(() => {});
 
 async function getCache() {
   const { [CACHE_KEY]: cache } = await chrome.storage.local.get(CACHE_KEY);
@@ -410,7 +410,7 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
   const block = data.content?.find(b => b.type === 'tool_use' && b.name === 'classify_domains');
   if (!block) return Object.fromEntries(domains.map(d => [d, { category: 'specific', impact: '' }]));
 
-  const VALID = new Set(['common', 'specific', 'noise']);
+  const VALID = new Set(['generic', 'specific', 'noise']);
   const out = {};
   for (const e of block.input.classifications || []) {
     // Default to 'specific' when uncertain so a needed dependency isn't dropped.
@@ -422,10 +422,10 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
 const CATEGORY_LABELS = {
   first_party: 'First Party',
   specific: 'Specific Dependencies',
-  common: 'Common Dependencies',
+  generic: 'Generic Dependencies',
   noise: 'Noise',
 };
-const CATEGORY_RANK = { first_party: 0, specific: 1, common: 2, noise: 3 };
+const CATEGORY_RANK = { first_party: 0, specific: 1, generic: 2, noise: 3 };
 
 async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '', signal) {
   const apiKey = await getApiKey();

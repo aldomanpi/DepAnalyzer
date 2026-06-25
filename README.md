@@ -9,9 +9,9 @@ categories:
 - **Specific Dependencies** — functional services particular to this site
   (its CDN, asset servers, API backends, specific integrations) — these go in
   the per-site allowlist.
-- **Common Dependencies** — ubiquitous public CDNs/services (e.g. `gstatic.com`,
-  `jsdelivr.net`, `stripe.com`) that are real dependencies but already allowed
-  almost everywhere, so they don't need per-site whitelisting.
+- **Generic Dependencies** — widely-used third-party providers (e.g. `gstatic.com`,
+  `jsdelivr.net`, `stripe.com`, Braintree, Apple Pay) that are real dependencies
+  but already allowed almost everywhere, so they don't need per-site whitelisting.
 - **Noise** — ads, trackers, analytics, and other optional services.
 
 ## Features

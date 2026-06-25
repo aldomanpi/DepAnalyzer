@@ -38,13 +38,13 @@ const errorMsg            = document.getElementById('error-msg');
 const summary             = document.getElementById('summary');
 const copyBtn             = document.getElementById('copy-btn');
 const depSects            = document.getElementById('dependency-sections');
-const commonSection       = document.getElementById('common-section');
-const commonSects         = document.getElementById('common-sections');
-const commonBadge         = document.getElementById('common-badge');
+const genericSection      = document.getElementById('generic-section');
+const genericSects        = document.getElementById('generic-sections');
+const genericBadge        = document.getElementById('generic-badge');
 const noiseSects          = document.getElementById('noise-sections');
 const noiseBadge          = document.getElementById('noise-badge');
 
-const CATEGORY_ICONS = { first_party: '🏠', specific: '🔗', common: '🌐', noise: '🔇' };
+const CATEGORY_ICONS = { first_party: '🏠', specific: '🔗', generic: '🌐', noise: '🔇' };
 
 let activeTabId  = null;
 let activeTabUrl = '';
@@ -593,13 +593,13 @@ function buildSection(label, icon, items, isNoise, perHost = false) {
 
 function renderResults(data, perHost = false) {
   depSects.innerHTML = '';
-  commonSects.innerHTML = '';
+  genericSects.innerHTML = '';
   noiseSects.innerHTML = '';
   whitelistDomains = [];
 
   // Partition into the four categories. The whitelist = first-party + specific
-  // (the per-site dependencies to allow). Common = ubiquitous, already-allowed.
-  const buckets = { first_party: [], specific: [], common: [], noise: [] };
+  // (the per-site dependencies to allow). Generic = ubiquitous, already-allowed.
+  const buckets = { first_party: [], specific: [], generic: [], noise: [] };
   for (const item of data.results) {
     (buckets[item.category] || buckets.specific).push(item);
   }
@@ -611,12 +611,12 @@ function renderResults(data, perHost = false) {
     whitelistDomains.push(...items.map(i => i.domain));
   }
 
-  if (buckets.common.length) {
-    commonSects.appendChild(
-      buildSection(buckets.common[0].label, CATEGORY_ICONS.common, buckets.common, false, perHost));
+  if (buckets.generic.length) {
+    genericSects.appendChild(
+      buildSection(buckets.generic[0].label, CATEGORY_ICONS.generic, buckets.generic, false, perHost));
   }
-  commonBadge.textContent = buckets.common.length;
-  commonSection.classList.toggle('hidden', !buckets.common.length);
+  genericBadge.textContent = buckets.generic.length;
+  genericSection.classList.toggle('hidden', !buckets.generic.length);
 
   if (buckets.noise.length) {
     noiseSects.appendChild(
@@ -628,7 +628,7 @@ function renderResults(data, perHost = false) {
   summary.innerHTML =
     `Analyzed <strong>${esc(data.target)}</strong> — ` +
     `<strong>${whitelistDomains.length}</strong> to allow · ` +
-    `<strong>${buckets.common.length}</strong> common · ` +
+    `<strong>${buckets.generic.length}</strong> generic · ` +
     `<strong>${buckets.noise.length}</strong> noise ${unit}(s)`;
 
   results.classList.remove('hidden');
