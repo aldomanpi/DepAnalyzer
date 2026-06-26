@@ -21,7 +21,7 @@ Critical rules:
 3. Performance monitoring, RUM, and analytics are noise even when the data is described as "specific to this site."
 4. When genuinely uncertain between specific and noise, choose specific — treat it as a needed dependency rather than risk breaking the site.
 5. Some domains include an "observed paths" line listing what they actually served on the analyzed page (query strings removed). Use it: paths like /static/app.js, /assets/img.png, /fonts/…, or an API/data endpoint indicate a functional role; paths like /ads/pixel.js, /collect, /track, /beacon, /b/ss indicate tracking.
-6. A domain often serves more than one purpose. Classify it by its MOST functional role: if ANY of its requests deliver functional content the page uses (scripts, styles, images, media, fonts, or API/data), classify the whole domain as functional (generic or specific), even if other requests are ads or tracking. Choose noise ONLY when every observed request is optional tracking/advertising with no functional content.`;
+6. A domain often serves more than one purpose. Classify it by its MOST functional role: if ANY of its requests deliver content the SITE'S OWN experience needs — its scripts, styles, images, media, fonts, or API/data — classify the whole domain as functional (generic or specific), even if it also serves some tracking. BUT a script whose PURPOSE is advertising, analytics, or tracking does NOT count as functional content: an ad network or measurement vendor is noise even though it delivers JavaScript (e.g. doubleclick.net serving an ad library, a tag manager, or a measurement pixel). Decide by the domain's purpose, not the file type — if its role is advertising/tracking/measurement, it is noise even when the request is a .js or .css file.`;
 
 const CLASSIFY_TOOL = {
   name: 'classify_domains',
@@ -471,6 +471,22 @@ function isKnownGeneric(domain) {
   return KNOWN_GENERIC.has(domain) || KNOWN_GENERIC.has(getRegisteredDomain(domain));
 }
 
+// Domains that are ALWAYS noise — pure advertising / tracking / measurement
+// networks with no site-functional role, even though they deliver JavaScript.
+// Forced to 'noise' without asking the AI. Keep this to unambiguous ad/tracking
+// (a domain that can ever serve genuine site content does NOT belong here).
+const KNOWN_NOISE = new Set([
+  'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+  'googletagservices.com', 'googletagmanager.com', 'google-analytics.com',
+  'adnxs.com', 'adsrvr.org', 'amazon-adsystem.com', 'criteo.com', 'criteo.net',
+  'taboola.com', 'outbrain.com', 'scorecardresearch.com', 'quantserve.com',
+  'adroll.com', 'hotjar.com', 'mixpanel.com',
+]);
+const KNOWN_NOISE_IMPACT = 'Advertising / tracking / measurement network — optional, excluded as noise.';
+function isKnownNoise(domain) {
+  return KNOWN_NOISE.has(domain) || KNOWN_NOISE.has(getRegisteredDomain(domain));
+}
+
 async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '', signal) {
   const apiKey = await getApiKey();
   if (!apiKey) throw new Error('No Anthropic API key set — open Options to add one.');
@@ -500,8 +516,10 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   };
 
   const allDomains = Object.keys(domainMap);
-  // Always-generic infra (gstatic, jsdelivr, …) skips the AI and the cache.
-  const thirdParty = allDomains.filter(d => !isTargetParty(d) && !isKnownGeneric(d));
+  // Always-generic infra (gstatic, …) and always-noise ad/tracking networks
+  // (doubleclick, …) are resolved by their lists and skip the AI and the cache.
+  const thirdParty = allDomains.filter(
+    d => !isTargetParty(d) && !isKnownGeneric(d) && !isKnownNoise(d));
   const cached   = thirdParty.filter(d =>  lookup(d));
   const uncached = thirdParty.filter(d => !lookup(d));
 
@@ -539,6 +557,8 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
       cat = 'first_party'; impact = '';
     } else if (isKnownGeneric(domain)) {
       cat = 'generic'; impact = KNOWN_GENERIC_IMPACT;
+    } else if (isKnownNoise(domain)) {
+      cat = 'noise'; impact = KNOWN_NOISE_IMPACT;
     } else {
       cat = allCats[domain]?.category || 'specific';
       impact = allCats[domain]?.impact || '';
