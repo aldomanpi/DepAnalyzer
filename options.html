@@ -170,11 +170,11 @@
     <div class="card">
       <h2>Classification Cache</h2>
       <p style="font-size:13px;color:var(--text-3);margin-bottom:14px;">
-        Classifications are cached locally for 90 days so they aren't re-sent to
-        the AI. Ubiquitous providers (Generic) are cached globally and reused
-        everywhere; site-specific results are cached per site, so a domain can be
-        classified differently depending on the page it appears on. Clear the
-        cache to force fresh classifications.
+        AI classifications are cached locally per site for 90 days so they aren't
+        re-sent to the AI; a domain can therefore be classified differently
+        depending on the page it appears on. A built-in list of ubiquitous
+        providers (e.g. gstatic.com, jsdelivr.net) is always treated as Generic
+        without calling the AI. Clear the cache to force fresh classifications.
       </p>
       <div class="cache-row">
         <span class="cache-stat">Cached entries: <strong id="cache-size">…</strong></span>

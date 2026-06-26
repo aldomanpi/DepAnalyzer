@@ -262,18 +262,18 @@ const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 // Versioned cache key. Bumped when category semantics or the key shape change
 // so stale entries aren't reused. Superseded keys are dropped on startup.
-const CACHE_KEY = 'domainCache_v5';
+const CACHE_KEY = 'domainCache_v6';
 chrome.storage.local.remove(
-  ['domainCache', 'domainCache_v2', 'domainCache_v3', 'domainCache_v4']).catch(() => {});
+  ['domainCache', 'domainCache_v2', 'domainCache_v3', 'domainCache_v4', 'domainCache_v5'])
+  .catch(() => {});
 
-// Cache scope rule: a `generic` verdict means "ubiquitous, the same on every
-// site", so it is cached GLOBALLY and reused everywhere (e.g. gstatic.com).
-// `specific`/`noise` verdicts are context-dependent (e.g. redditstatic.com is
-// a CDN on one page but an ads pixel on another), so they are cached per-site.
-// '*' is a reserved scope token — real registered domains never equal it.
-const GLOBAL_SCOPE = '*';
-function cacheKey(scope, domain) {
-  return `${scope || ''}\n${domain}`;
+// AI verdicts are cached per analyzed site, because a domain's category can
+// depend on what it does on a given page (e.g. redditstatic.com serves media
+// on one page and an ads pixel on another). A verdict from one site is never
+// reused on another. (Always-generic infra is handled separately by
+// KNOWN_GENERIC below and never reaches the cache.)
+function cacheKey(site, domain) {
+  return `${site || ''}\n${domain}`;
 }
 
 async function getCache() {
@@ -291,9 +291,7 @@ async function saveToCache(target, entries) {
   const cache = await getCache();
   const ts = Date.now();
   for (const { domain, category, impact } of entries) {
-    // generic is site-independent → global scope; everything else → per-site.
-    const scope = category === 'generic' ? GLOBAL_SCOPE : target;
-    cache[cacheKey(scope, domain)] = { category, impact, ts };
+    cache[cacheKey(target, domain)] = { category, impact, ts };
   }
   await chrome.storage.local.set({ [CACHE_KEY]: cache });
 }
@@ -440,6 +438,20 @@ const CATEGORY_LABELS = {
 };
 const CATEGORY_RANK = { first_party: 0, specific: 1, generic: 2, noise: 3 };
 
+// Domains that are ALWAYS generic regardless of page — ubiquitous public
+// infrastructure already permitted by virtually every filter. These are forced
+// to 'generic' without asking the AI. Keep this to truly site-independent infra
+// (a domain that could ever serve site-specific content or tracking does NOT
+// belong here — let the AI judge those per page). Matched by registered domain.
+const KNOWN_GENERIC = new Set([
+  'gstatic.com', 'googleapis.com', 'jsdelivr.net', 'unpkg.com',
+  'bootstrapcdn.com', 'jquery.com', 'fontawesome.com', 'typekit.net',
+]);
+const KNOWN_GENERIC_IMPACT = 'Ubiquitous public infrastructure, already allowed by virtually every filter.';
+function isKnownGeneric(domain) {
+  return KNOWN_GENERIC.has(domain) || KNOWN_GENERIC.has(getRegisteredDomain(domain));
+}
+
 async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '', signal) {
   const apiKey = await getApiKey();
   if (!apiKey) throw new Error('No Anthropic API key set — open Options to add one.');
@@ -462,19 +474,15 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   const isTargetParty = d =>
     !!targetRegistered && (d === targetRegistered || getRegisteredDomain(d) === targetRegistered);
 
-  // Resolve a domain's cached verdict: a global 'generic' entry applies on
-  // every site and wins; otherwise fall back to a per-site entry. Stale
-  // entries (past TTL) are ignored so they get refreshed.
+  // Per-site cached verdict (ignoring stale entries past their TTL).
   const lookup = d => {
-    const g = cache[cacheKey(GLOBAL_SCOPE, d)];
-    if (g && !isStale(g)) return g;
-    const s = cache[cacheKey(targetRegistered, d)];
-    if (s && !isStale(s)) return s;
-    return null;
+    const e = cache[cacheKey(targetRegistered, d)];
+    return e && !isStale(e) ? e : null;
   };
 
   const allDomains = Object.keys(domainMap);
-  const thirdParty = allDomains.filter(d => !isTargetParty(d));
+  // Always-generic infra (gstatic, jsdelivr, …) skips the AI and the cache.
+  const thirdParty = allDomains.filter(d => !isTargetParty(d) && !isKnownGeneric(d));
   const cached   = thirdParty.filter(d =>  lookup(d));
   const uncached = thirdParty.filter(d => !lookup(d));
 
@@ -503,8 +511,15 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   const results = [];
   for (const [domain, info] of Object.entries(domainMap)) {
     const isFirstParty = isTargetParty(domain);
-    const cat    = isFirstParty ? 'first_party' : (allCats[domain]?.category || 'specific');
-    const impact = isFirstParty ? '' : (allCats[domain]?.impact || '');
+    let cat, impact;
+    if (isFirstParty) {
+      cat = 'first_party'; impact = '';
+    } else if (isKnownGeneric(domain)) {
+      cat = 'generic'; impact = KNOWN_GENERIC_IMPACT;
+    } else {
+      cat = allCats[domain]?.category || 'specific';
+      impact = allCats[domain]?.impact || '';
+    }
     results.push({
       domain,
       category: cat,
