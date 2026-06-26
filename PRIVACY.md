@@ -85,5 +85,5 @@ until you clear it or remove the extension.
 
 ## Contact
 
-Questions or requests: https://github.com/aldomanpi/DepAnalyzer-ext (open an
+Questions or requests: https://github.com/aldomanpi/DepAnalyzer (open an
 issue), or the developer at aldomanpi@gmail.com.
