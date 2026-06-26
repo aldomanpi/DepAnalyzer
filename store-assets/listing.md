@@ -24,7 +24,7 @@ Click Start Capture, browse the site normally, then Analyze with AI. Every domai
 
 FEATURES
 • Live capture of every domain a tab contacts, with request counts and the exact request paths.
-• AI classification that reads what each domain actually serves on the page — a content CDN is treated differently from an ad pixel, even on the same domain.
+• AI classification that reads the request paths each domain serves on the page — so a domain is judged by what it actually does, not just its name.
 • One-click "Copy whitelist" of the domains you actually need to allow.
 • Subdomain mode to classify each subdomain individually, shown as a tidy tree.
 • Manual mode — paste a list of hostnames or URLs to categorize without capturing.
@@ -35,7 +35,7 @@ REQUIREMENTS — BRING YOUR OWN API KEY
 Classification uses Anthropic's Claude (the low-cost Haiku model) with YOUR OWN API key, which you add in Options. A free Anthropic account plus a small amount of credit is all you need — analyzing a site typically costs a fraction of a cent, and re-analyzing a cached site is free. The extension is fully usable for capturing domains without a key; the key is only needed for AI categorization.
 
 PRIVACY
-There is no developer-operated server and no analytics or tracking of any kind. When you run an analysis, domain names plus a sample of request paths (query strings removed) are sent to the Anthropic API using your key, and domain names are sent to DuckDuckGo for short descriptions. The extension also fetches each analyzed domain's public homepage to read its title/description. Your API key, cache, and settings stay in your browser. Full details: https://github.com/aldomanpi/DepAnalyzer-ext/blob/main/PRIVACY.md
+There is no developer-operated server and no analytics or tracking of any kind. When you run an analysis, domain names plus a sample of request paths (query strings removed) are sent to the Anthropic API using your key, and domain names are sent to DuckDuckGo for short descriptions. The extension also fetches each analyzed domain's public homepage to read its title/description. Your API key, cache, and settings stay in your browser. Full details: https://github.com/aldomanpi/DepAnalyzer/blob/main/PRIVACY.md
 
 WHO IT'S FOR
 Network and content-filter administrators building allowlists, security and privacy researchers, and web developers auditing third-party dependencies.
@@ -78,4 +78,4 @@ Capture and categorize the third-party domains a website depends on, to help bui
 - No data is sent to any developer-operated server.
 
 **Privacy policy URL:**
-https://github.com/aldomanpi/DepAnalyzer-ext/blob/main/PRIVACY.md
+https://github.com/aldomanpi/DepAnalyzer/blob/main/PRIVACY.md
