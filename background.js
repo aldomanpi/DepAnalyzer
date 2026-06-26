@@ -1,34 +1,32 @@
 import { getRegisteredDomain, isPrivateHost, extractHostname } from './lib/domainUtils.js';
 
-const SYSTEM_PROMPT = `You are helping an internet filtering organization categorize website dependencies.
+const SYSTEM_PROMPT = `You are helping an internet filtering organization categorize the third-party domains a website depends on, for allowlist management.
 
-Classify each domain into exactly one of these two categories:
+Classify each domain into exactly one of these three categories:
 
-- noise: A service that is optional from the user's perspective — including advertising, tracking, and analytics — where blocking it would not break or visibly degrade the site. This applies regardless of who owns the domain or what site is being analyzed. Examples:
-  - Analytics and telemetry (google-analytics.com, googletagmanager.com, hotjar.com, mixpanel.com, segment.io, amplitude.com, clarity.ms, heap.io, etc.)
-  - A/B testing and feature flagging (optimizely.com, vwo.com, launchdarkly.com, growthbook.io, statsig.com, etc.)
-  - Advertising and tracking pixels (doubleclick.net, googlesyndication.com, facebook.net, criteo.com, taboola.com, etc.)
-  - Social media embeds and pixels (twitter.com, x.com, linkedin.com, instagram.com, tiktok.com, pinterest.com, etc.)
-  - Public open-source CDN frameworks (cdnjs.cloudflare.com, jsdelivr.net, unpkg.com, bootstrapcdn.com, etc.)
-  - Generic infrastructure from hyperscalers serving analytics/ads/tracking (googleapis.com, gstatic.com, cloudfront.net, amazonaws.com, fastly.net, akamaized.net, azureedge.net, etc.) — but only when the specific subdomain/usage is for analytics or optional services, not for delivering the site's own content
-  - Error monitoring (sentry.io, datadoghq.com, newrelic.com, bugsnag.com, rollbar.com)
-  - Chat widgets (intercom.io, drift.com, crisp.chat, tawk.to, zendesk.com)
-  - Consent management (onetrust.com, cookiebot.com, trustarc.com)
+- generic: A widely-used third-party service or provider that many different websites rely on — a common building block of the web — and is therefore typically already permitted globally, so it does NOT need to be added to a per-site allowlist. These ARE real, functional dependencies (blocking them can break the site); they belong here because the SERVICE is widely used, NOT because it is safe to block. This applies regardless of which site is being analyzed:
+  - Public open-source CDNs (cdnjs.cloudflare.com, jsdelivr.net, unpkg.com, bootstrapcdn.com)
+  - Shared static/CDN infrastructure (gstatic.com, fonts.googleapis.com, fonts.gstatic.com, ajax.googleapis.com; cloudflare/akamai/fastly/cloudfront edges serving shared assets)
+  - Widely-used payment processors and gateways (stripe.com, js.stripe.com, paypal.com, braintree-api.com, braintreegateway.com, adyen.com, checkout.com, and Apple Pay endpoints such as apple.com / cdn-apple.com / applepay.cdn-apple.com)
+  - Common auth, identity, and bot-protection providers (accounts.google.com, auth0.com, okta.com, recaptcha, hcaptcha.com)
+  - Common maps, fonts, embeds, and media providers (maps.googleapis.com, youtube.com / ytimg.com, vimeo.com, gravatar.com, typekit.net)
 
-- cdn: A domain that delivers visible content or enables core functionality — blocking it would break or noticeably degrade the user experience. This includes:
-  - The target site's own CDN, media hosting, asset servers, URL shorteners, or redirect domains (even when hosted under a different domain name)
-  - Payment processors, authentication providers, maps, video hosting, fonts
-  - Any third-party service the site's core functionality visibly depends on
+- specific: A functional dependency that belongs to THIS site itself — not a service that many other sites also use. This is mainly the site's own infrastructure under a different domain name: its own CDN, media/asset servers, API backends, search/recommendation services, URL shorteners, or redirect domains. Choose specific ONLY when the domain is the site's own infrastructure or a niche provider used by very few sites — NOT for well-known third-party providers, which are generic.
+
+- noise: An optional service that does not affect what the user sees or can do — blocking it would not break or visibly degrade the site. This includes advertising, tracking, web analytics, telemetry, performance/RUM monitoring, A/B testing, error monitoring, session recording, chat widgets, social embeds/pixels, and consent management — even when the vendor's data is described as "specific to this site." Examples: google-analytics.com, googletagmanager.com, doubleclick.net, hotjar.com, segment.io, facebook.net, sentry.io, datadoghq.com, btttag.com / Blue Triangle and similar RUM vendors, intercom.io, onetrust.com.
 
 Critical rules:
-1. Classify by what the domain IS, not by who owns it. google-analytics.com is always noise even on google.com.
-2. WHEN UNCERTAIN, choose 'cdn'. Only choose 'noise' when you are confident the domain serves an optional, invisible purpose.
-3. Domains whose names share obvious branding with the target site are almost certainly proprietary infrastructure — classify as 'cdn'.
-4. A domain delivering the site's own content, images, videos, or user data is always 'cdn', even if it looks like a generic CDN name.`;
+1. Classify by what the service IS and how widely it is used across the web, not by who integrated it or which site is being analyzed. A payment gateway like Braintree or Apple Pay is generic on every site that uses it.
+2. generic vs specific: if the SERVICE is a recognizable third-party provider used across many websites (payments, auth, CDNs, fonts, maps, captcha, embeds), choose generic. Choose specific only for the site's own infrastructure or a niche dependency particular to this site.
+3. Performance monitoring, RUM, and analytics are noise even when the data is described as "specific to this site."
+4. When genuinely uncertain between specific and noise, choose specific — treat it as a needed dependency rather than risk breaking the site.
+5. Some domains include an "observed paths" line listing what they actually served on the analyzed page (query strings removed). Use it: paths like /static/app.js, /assets/img.png, /fonts/…, or an API/data endpoint indicate a functional role; paths like /ads/pixel.js, /collect, /track, /beacon, /b/ss indicate tracking.
+6. A domain often serves more than one purpose. Classify it by its MOST functional role: if ANY of its requests deliver content the SITE'S OWN experience needs — its scripts, styles, images, media, fonts, or API/data — classify the whole domain as functional (generic or specific), even if it also serves some tracking. BUT a script whose PURPOSE is advertising, analytics, or tracking does NOT count as functional content: an ad network or measurement vendor is noise even though it delivers JavaScript (e.g. doubleclick.net serving an ad library, a tag manager, or a measurement pixel). Decide by the domain's purpose, not the file type — if its role is advertising/tracking/measurement, it is noise even when the request is a .js or .css file.
+7. Use the observed paths to judge ROLE (functional vs ads/tracking), NOT ownership. A site or brand name appearing in a request path (e.g. /lowes/, /deployments/Lowes/, /widgets/lowes/) does NOT make a domain specific — multi-tenant third-party providers (reviews, ratings, rebates, search, chat, widgets, CDNs like cloudfront.net) serve per-customer content under customer-named paths but remain third-party services used by many sites; classify them generic (or noise) based on the provider, not specific. A domain is 'specific' ONLY when the domain/provider itself is the site's own infrastructure or a genuinely niche, single-customer service — never merely because a path mentions the site.`;
 
 const CLASSIFY_TOOL = {
   name: 'classify_domains',
-  description: 'Submit the final cdn/noise classification for all domains.',
+  description: 'Submit the final classification for all domains.',
   input_schema: {
     type: 'object',
     properties: {
@@ -39,8 +37,9 @@ const CLASSIFY_TOOL = {
           type: 'object',
           properties: {
             domain:   { type: 'string' },
-            category: { type: 'string', enum: ['cdn', 'noise'] },
-            impact:   { type: 'string', description: 'One sentence describing what this domain does and how blocking it would generally affect any website that depends on it.' },
+            category: { type: 'string', enum: ['generic', 'specific', 'noise'],
+                        description: 'generic = widely-used third-party provider (already allowed everywhere); specific = the site\'s own infrastructure; noise = optional (ads/tracking/analytics/monitoring).' },
+            impact:   { type: 'string', description: 'One neutral sentence describing what this service does and what depends on it. Do not claim blocking is safe for generic or specific domains.' },
           },
           required: ['domain', 'category', 'impact'],
         },
@@ -240,7 +239,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'clearCache') {
-    chrome.storage.local.remove('domainCache')
+    chrome.storage.local.remove(CACHE_KEY)
       .then(() => sendResponse({ ok: true }))
       .catch(e => sendResponse({ error: e.message }));
     return true;
@@ -264,9 +263,33 @@ async function getApiKey() {
 // changes purpose doesn't stay misclassified forever.
 const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
+// The cache key includes a hash of the classifier prompt, so ANY change to the
+// classification logic automatically invalidates stale verdicts — prompt tuning
+// is never masked by old cached results, with no manual version bump.
+function strHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+const CACHE_KEY = `domainCache_${strHash(SYSTEM_PROMPT)}`;
+// Drop any cache left behind by a previous classifier version.
+chrome.storage.local.get(null).then(all => {
+  const stale = Object.keys(all).filter(k => k.startsWith('domainCache') && k !== CACHE_KEY);
+  if (stale.length) chrome.storage.local.remove(stale).catch(() => {});
+}).catch(() => {});
+
+// AI verdicts are cached per analyzed site, because a domain's category can
+// depend on what it does on a given page (e.g. redditstatic.com serves media
+// on one page and an ads pixel on another). A verdict from one site is never
+// reused on another. (Always-generic infra is handled separately by
+// KNOWN_GENERIC below and never reaches the cache.)
+function cacheKey(site, domain) {
+  return `${site || ''}\n${domain}`;
+}
+
 async function getCache() {
-  const { domainCache } = await chrome.storage.local.get('domainCache');
-  return domainCache || {};
+  const { [CACHE_KEY]: cache } = await chrome.storage.local.get(CACHE_KEY);
+  return cache || {};
 }
 
 // A cache entry is stale once it's older than the TTL. Entries written before
@@ -275,13 +298,13 @@ function isStale(entry) {
   return !!entry?.ts && (Date.now() - entry.ts) > CACHE_TTL_MS;
 }
 
-async function saveToCache(entries) {
+async function saveToCache(target, entries) {
   const cache = await getCache();
   const ts = Date.now();
   for (const { domain, category, impact } of entries) {
-    cache[domain] = { category, impact, ts };
+    cache[cacheKey(target, domain)] = { category, impact, ts };
   }
-  await chrome.storage.local.set({ domainCache: cache });
+  await chrome.storage.local.set({ [CACHE_KEY]: cache });
 }
 
 // Map an error to a user-friendly message for the popup.
@@ -340,8 +363,22 @@ async function fetchDomainSummary(domain) {
 // into batches to avoid silently dropping domains.
 const CLASSIFY_BATCH_SIZE = 40;
 
+// Distinct request pathnames a domain served (query strings stripped for
+// privacy), capped so the prompt stays bounded. Gives the model the signal it
+// needs to judge a domain's role on this page (e.g. /ads/pixel.js vs /app.js).
+function samplePaths(urls, max = 8) {
+  const seen = new Set();
+  for (const u of urls || []) {
+    try {
+      seen.add(new URL(u).pathname || '/');
+      if (seen.size >= max) break;
+    } catch {}
+  }
+  return [...seen];
+}
+
 // --- AI classification (batched API calls with pre-fetched summaries) ---
-async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabId, signal) {
+async function classifyWithAI(domains, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, signal) {
   if (!domains.length) return {};
 
   const out = {};
@@ -352,12 +389,12 @@ async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabI
     const range = total > CLASSIFY_BATCH_SIZE
       ? ` (${i + 1}–${Math.min(i + batch.length, total)} of ${total})`
       : '';
-    Object.assign(out, await classifyBatch(batch, targetUrl, targetRegistered, apiKey, tabId, range, signal));
+    Object.assign(out, await classifyBatch(batch, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, range, signal));
   }
   return out;
 }
 
-async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId, range = '', signal) {
+async function classifyBatch(domains, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, range = '', signal) {
   // Fetch all summaries in parallel — free, no AI tokens consumed
   sendProgress(tabId, `Looking up ${domains.length} domain(s)${range}…`);
   const settled = await Promise.allSettled(
@@ -368,11 +405,14 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
     if (r.status === 'rejected') return null;
     const { domain, summary } = r.value;
     const brief = (summary || '').replace(/\s+/g, ' ').slice(0, 250);
-    return brief ? `- ${domain}: ${brief}` : `- ${domain}`;
+    const paths = (pathsByDomain && pathsByDomain[domain]) || [];
+    let line = brief ? `- ${domain}: ${brief}` : `- ${domain}`;
+    if (paths.length) line += `\n    observed paths: ${paths.join(', ')}`;
+    return line;
   }).filter(Boolean).join('\n') || domains.map(d => `- ${d}`).join('\n');
 
   const targetHint = targetRegistered
-    ? `\nNote: the target site's registered domain is "${targetRegistered}". Domains sharing its brand name or clearly serving as its infrastructure should be classified as cdn.`
+    ? `\nNote: the target site's registered domain is "${targetRegistered}". Domains sharing its brand name or clearly serving as its own infrastructure should be classified as specific.`
     : '';
 
   sendProgress(tabId, `Classifying ${domains.length} domain(s)${range}…`);
@@ -407,16 +447,54 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
 
   const data = await resp.json();
   const block = data.content?.find(b => b.type === 'tool_use' && b.name === 'classify_domains');
-  if (!block) return Object.fromEntries(domains.map(d => [d, { category: 'cdn', impact: '' }]));
+  if (!block) return Object.fromEntries(domains.map(d => [d, { category: 'specific', impact: '' }]));
 
+  const VALID = new Set(['generic', 'specific', 'noise']);
   const out = {};
   for (const e of block.input.classifications || []) {
-    if (e.domain) out[e.domain] = { category: e.category === 'noise' ? 'noise' : 'cdn', impact: e.impact || '' };
+    // Default to 'specific' when uncertain so a needed dependency isn't dropped.
+    if (e.domain) out[e.domain] = { category: VALID.has(e.category) ? e.category : 'specific', impact: e.impact || '' };
   }
   return out;
 }
 
-const CATEGORY_LABELS = { first_party: 'First Party', cdn: 'CDN / Dependencies', noise: 'Noise' };
+const CATEGORY_LABELS = {
+  first_party: 'First Party',
+  specific: 'Specific Dependencies',
+  generic: 'Generic Dependencies',
+  noise: 'Noise',
+};
+const CATEGORY_RANK = { first_party: 0, specific: 1, generic: 2, noise: 3 };
+
+// Domains that are ALWAYS generic regardless of page — ubiquitous public
+// infrastructure already permitted by virtually every filter. These are forced
+// to 'generic' without asking the AI. Keep this to truly site-independent infra
+// (a domain that could ever serve site-specific content or tracking does NOT
+// belong here — let the AI judge those per page). Matched by registered domain.
+const KNOWN_GENERIC = new Set([
+  'gstatic.com', 'googleapis.com', 'jsdelivr.net', 'unpkg.com',
+  'bootstrapcdn.com', 'jquery.com', 'fontawesome.com', 'typekit.net',
+]);
+const KNOWN_GENERIC_IMPACT = 'Ubiquitous public infrastructure, already allowed by virtually every filter.';
+function isKnownGeneric(domain) {
+  return KNOWN_GENERIC.has(domain) || KNOWN_GENERIC.has(getRegisteredDomain(domain));
+}
+
+// Domains that are ALWAYS noise — pure advertising / tracking / measurement
+// networks with no site-functional role, even though they deliver JavaScript.
+// Forced to 'noise' without asking the AI. Keep this to unambiguous ad/tracking
+// (a domain that can ever serve genuine site content does NOT belong here).
+const KNOWN_NOISE = new Set([
+  'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+  'googletagservices.com', 'googletagmanager.com', 'google-analytics.com',
+  'adnxs.com', 'adsrvr.org', 'amazon-adsystem.com', 'criteo.com', 'criteo.net',
+  'taboola.com', 'outbrain.com', 'scorecardresearch.com', 'quantserve.com',
+  'adroll.com', 'hotjar.com', 'mixpanel.com',
+]);
+const KNOWN_NOISE_IMPACT = 'Advertising / tracking / measurement network — optional, excluded as noise.';
+function isKnownNoise(domain) {
+  return KNOWN_NOISE.has(domain) || KNOWN_NOISE.has(getRegisteredDomain(domain));
+}
 
 async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = '', signal) {
   const apiKey = await getApiKey();
@@ -440,11 +518,19 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   const isTargetParty = d =>
     !!targetRegistered && (d === targetRegistered || getRegisteredDomain(d) === targetRegistered);
 
+  // Per-site cached verdict (ignoring stale entries past their TTL).
+  const lookup = d => {
+    const e = cache[cacheKey(targetRegistered, d)];
+    return e && !isStale(e) ? e : null;
+  };
+
   const allDomains = Object.keys(domainMap);
-  const thirdParty = allDomains.filter(d => !isTargetParty(d));
-  // Cache hit only if present AND not past its TTL — stale entries get refreshed.
-  const cached   = thirdParty.filter(d =>  (d in cache) && !isStale(cache[d]));
-  const uncached = thirdParty.filter(d => !(d in cache) ||  isStale(cache[d]));
+  // Always-generic infra (gstatic, …) and always-noise ad/tracking networks
+  // (doubleclick, …) are resolved by their lists and skip the AI and the cache.
+  const thirdParty = allDomains.filter(
+    d => !isTargetParty(d) && !isKnownGeneric(d) && !isKnownNoise(d));
+  const cached   = thirdParty.filter(d =>  lookup(d));
+  const uncached = thirdParty.filter(d => !lookup(d));
 
   if (!uncached.length) {
     sendProgress(tabId, `All ${cached.length} domain(s) found in cache…`);
@@ -456,22 +542,36 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
 
   let aiResults = {};
   if (uncached.length) {
-    aiResults = await classifyWithAI(uncached, targetUrl, targetRegistered, apiKey, tabId, signal);
+    // Give the model what each domain actually served on this page so it can
+    // judge role (and bump a mixed-purpose domain up to its functional category).
+    const pathsByDomain = {};
+    for (const d of uncached) pathsByDomain[d] = samplePaths(domainMap[d]?.urls);
+    aiResults = await classifyWithAI(uncached, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, signal);
     await saveToCache(
+      targetRegistered,
       Object.entries(aiResults).map(([domain, { category, impact }]) => ({ domain, category, impact })),
     );
   }
 
   const allCats = {
-    ...Object.fromEntries(cached.map(d => [d, cache[d]])),
+    ...Object.fromEntries(cached.map(d => [d, lookup(d)])),
     ...aiResults,
   };
 
   const results = [];
   for (const [domain, info] of Object.entries(domainMap)) {
     const isFirstParty = isTargetParty(domain);
-    const cat    = isFirstParty ? 'first_party' : (allCats[domain]?.category || 'cdn');
-    const impact = isFirstParty ? '' : (allCats[domain]?.impact || '');
+    let cat, impact;
+    if (isFirstParty) {
+      cat = 'first_party'; impact = '';
+    } else if (isKnownGeneric(domain)) {
+      cat = 'generic'; impact = KNOWN_GENERIC_IMPACT;
+    } else if (isKnownNoise(domain)) {
+      cat = 'noise'; impact = KNOWN_NOISE_IMPACT;
+    } else {
+      cat = allCats[domain]?.category || 'specific';
+      impact = allCats[domain]?.impact || '';
+    }
     results.push({
       domain,
       category: cat,
@@ -484,8 +584,8 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
     });
   }
   results.sort((a, b) => {
-    if (a.is_noise !== b.is_noise) return a.is_noise ? 1 : -1;
-    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    const ra = CATEGORY_RANK[a.category] ?? 9, rb = CATEGORY_RANK[b.category] ?? 9;
+    if (ra !== rb) return ra - rb;
     return a.domain.localeCompare(b.domain);
   });
 

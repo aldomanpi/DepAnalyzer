@@ -2,19 +2,27 @@
 
 A Manifest V3 Chrome extension that discovers and categorizes the third-party
 domains a website depends on — built for internet-filter / allowlist management.
-Capture a site's network activity, then classify each domain as **first-party**,
-**CDN / dependency** (needed for the site to work), or **noise** (ads, trackers,
-analytics, and other optional services).
+Capture a site's network activity, then classify each domain into one of four
+categories:
+
+- **First Party** — the site's own registered domain.
+- **Specific Dependencies** — functional services particular to this site
+  (its CDN, asset servers, API backends, specific integrations) — these go in
+  the per-site allowlist.
+- **Generic Dependencies** — widely-used third-party providers (e.g. `gstatic.com`,
+  `jsdelivr.net`, `stripe.com`, Braintree, Apple Pay) that are real dependencies
+  but already allowed almost everywhere, so they don't need per-site whitelisting.
+- **Noise** — ads, trackers, analytics, and other optional services.
 
 ## Features
 
 - **Live capture** of the domains a tab contacts, with per-domain request counts
   and the exact request paths, updating in real time.
-- **AI classification** (Anthropic Claude Haiku, using your own API key) into
-  first-party / CDN / noise, with a one-line impact note per domain.
+- **AI classification** (Anthropic Claude Haiku, using your own API key) into the
+  four categories above, with a one-line impact note per domain.
 - **Subdomain mode** — classify each subdomain individually *and* its registered
   domain, shown as a nested tree.
-- **Copy whitelist** of the meaningful (non-noise) domains.
+- **Copy whitelist** of the domains to allow (first-party + specific dependencies).
 - **Manual mode** — paste a list of hostnames/URLs to classify without capturing.
 - Local, permanent **classification cache** so each domain is only analyzed once.
 - Light / dark / system **theme**.
@@ -37,12 +45,12 @@ analytics, and other optional services).
 ## Privacy
 
 The extension has **no developer-operated backend** and collects no analytics.
-When you run an analysis it sends **domain names only** to the Anthropic API
-(with your key) and to DuckDuckGo (for short descriptions). It also fetches the
-**public homepage of each newly-analyzed domain directly** to read its title and
-meta description — meaning your browser connects to those domains from your IP.
-No cookies/credentials are sent and results are cached so each domain is
-contacted at most once.
+When you run an analysis it sends **domain names plus a small sample of the
+request paths they served** (query strings removed — e.g. `/ads/pixel.js`) to
+the Anthropic API (with your key), and domain names to DuckDuckGo (for short
+descriptions). It also fetches the **public homepage of each newly-analyzed
+domain directly** to read its title and meta description — meaning your browser
+connects to those domains from your IP. No cookies/credentials are sent.
 
 Full details: [PRIVACY.md](./PRIVACY.md). You must host this policy at a public
 URL and link it in your Web Store listing.

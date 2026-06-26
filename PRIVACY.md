@@ -28,13 +28,18 @@ to the third-party services described below so the extension can do its job.
 
 ## Data that leaves your browser
 
-When you run an analysis, the extension contacts these third parties. Only
-**domain names** (and the target site's domain) are sent — never request
-contents, paths, or your browsing history.
+When you run an analysis, the extension contacts these third parties. It sends
+**domain names**, the target site's domain, and a small sample of the **request
+paths** those domains served (see below) — never request bodies, response
+contents, cookies, headers, or your broader browsing history.
 
-1. **Anthropic API (`api.anthropic.com`).** The list of domain names you are
-   analyzing is sent to Anthropic's Claude API, using your own API key, to
-   classify each domain. Your key is required and is sent only to Anthropic.
+1. **Anthropic API (`api.anthropic.com`).** The domains you are analyzing are
+   sent to Anthropic's Claude API, using your own API key, to classify each one.
+   To judge what a domain does on the page (e.g. serving a script/image vs an
+   ads/tracking pixel), a short sample of the **request paths** observed for each
+   domain is included — for example `/static/app.js` or `/ads/pixel.js`. **Query
+   strings are stripped** (everything after `?`); only the path portion is sent.
+   Your key is required and is sent only to Anthropic.
    See Anthropic's privacy policy: https://www.anthropic.com/legal/privacy
 2. **DuckDuckGo Instant Answer API (`api.duckduckgo.com`).** Each domain name is
    sent to DuckDuckGo to fetch a short description used to improve

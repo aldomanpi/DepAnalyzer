@@ -153,13 +153,14 @@
     <div class="card">
       <h2>Privacy &amp; data</h2>
       <p style="font-size:13px;color:var(--text-3);margin-bottom:8px;">
-        When you run an analysis, the domain names you analyze are sent to the
-        Anthropic API (using your key) and to DuckDuckGo for short descriptions.
-        To improve results, the extension also fetches the public homepage of
-        each newly-analyzed domain directly — so your browser connects to those
+        When you run an analysis, the domain names you analyze — plus a small
+        sample of the request paths they served (with query strings removed, e.g.
+        <code>/ads/pixel.js</code>) — are sent to the Anthropic API (using your
+        key) and the domain names to DuckDuckGo for short descriptions. To
+        improve results, the extension also fetches the public homepage of each
+        newly-analyzed domain directly — so your browser connects to those
         domains from your IP address. Only the page title and meta description
-        are read; no cookies or credentials are sent, and results are cached so
-        each domain is contacted at most once.
+        are read; no cookies or credentials are sent.
       </p>
       <p style="font-size:13px;color:var(--text-3);">
         Full details:
@@ -170,12 +171,14 @@
     <div class="card">
       <h2>Classification Cache</h2>
       <p style="font-size:13px;color:var(--text-3);margin-bottom:14px;">
-        Classified domains are cached locally for 90 days so they aren't re-sent
-        to the AI; after that they're automatically re-checked. Clear the cache
-        to force a fresh classification.
+        AI classifications are cached locally per site for 90 days so they aren't
+        re-sent to the AI; a domain can therefore be classified differently
+        depending on the page it appears on. A built-in list of ubiquitous
+        providers (e.g. gstatic.com, jsdelivr.net) is always treated as Generic
+        without calling the AI. Clear the cache to force fresh classifications.
       </p>
       <div class="cache-row">
-        <span class="cache-stat">Cached domains: <strong id="cache-size">…</strong></span>
+        <span class="cache-stat">Cached entries: <strong id="cache-size">…</strong></span>
         <button class="btn btn-danger" id="clear-cache">Clear cache</button>
       </div>
       <div class="flash" id="cache-flash"></div>
