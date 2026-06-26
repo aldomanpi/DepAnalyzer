@@ -1,0 +1,4 @@
+# Shell scripts must use LF endings so they run under WSL/Linux even when
+# checked out on Windows (where core.autocrlf would otherwise insert CRLF and
+# break the shebang: "/usr/bin/env: 'bash\r': No such file or directory").
+*.sh text eol=lf
