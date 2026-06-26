@@ -263,12 +263,20 @@ async function getApiKey() {
 // changes purpose doesn't stay misclassified forever.
 const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
-// Versioned cache key. Bumped when category semantics or the key shape change
-// so stale entries aren't reused. Superseded keys are dropped on startup.
-const CACHE_KEY = 'domainCache_v6';
-chrome.storage.local.remove(
-  ['domainCache', 'domainCache_v2', 'domainCache_v3', 'domainCache_v4', 'domainCache_v5'])
-  .catch(() => {});
+// The cache key includes a hash of the classifier prompt, so ANY change to the
+// classification logic automatically invalidates stale verdicts — prompt tuning
+// is never masked by old cached results, with no manual version bump.
+function strHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+const CACHE_KEY = `domainCache_${strHash(SYSTEM_PROMPT)}`;
+// Drop any cache left behind by a previous classifier version.
+chrome.storage.local.get(null).then(all => {
+  const stale = Object.keys(all).filter(k => k.startsWith('domainCache') && k !== CACHE_KEY);
+  if (stale.length) chrome.storage.local.remove(stale).catch(() => {});
+}).catch(() => {});
 
 // AI verdicts are cached per analyzed site, because a domain's category can
 // depend on what it does on a given page (e.g. redditstatic.com serves media
