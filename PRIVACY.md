@@ -1,6 +1,6 @@
 # DepAnalyzer — Privacy Policy
 
-_Last updated: 2026-06-25_
+_Last updated: 2026-06-26_
 
 DepAnalyzer is a browser extension that helps you discover and categorize the
 third-party domains a website depends on, for use in internet-filter / allowlist
@@ -57,8 +57,8 @@ The extension does **not** send data to any server operated by the developer.
 ## Data stored locally
 
 - **API key** — `chrome.storage.local`, until you change or clear it.
-- **Classification cache** — domain → category results, stored locally so each
-  domain is only classified once. You can clear it any time in Options
+- **Classification cache** — per-site domain → category results, stored locally
+  so a domain isn't re-sent to the AI each time. You can clear it any time in Options
   ("Clear cache").
 - **Capture data** — kept in session storage for the current browser session
   and cleared when the browser closes or when you click Clear.
