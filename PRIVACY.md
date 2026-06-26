@@ -1,13 +1,13 @@
-# DepAnalyzer — Privacy Policy
+# Dependency Analyzer — Privacy Policy
 
 _Last updated: 2026-06-26_
 
-DepAnalyzer is a browser extension that helps you discover and categorize the
+Dependency Analyzer is a browser extension that helps you discover and categorize the
 third-party domains a website depends on, for use in internet-filter / allowlist
 management. This policy explains exactly what data the extension accesses, what
 leaves your browser, and where it goes.
 
-**Summary:** DepAnalyzer has no backend that we operate, collects no analytics,
+**Summary:** Dependency Analyzer has no backend that we operate, collects no analytics,
 and never sells or shares your data. Everything is stored locally in your
 browser. The only data that leaves your machine is sent — at your initiation —
 to the third-party services described below so the extension can do its job.
