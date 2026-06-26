@@ -1,4 +1,4 @@
-# DepAnalyzer
+# Dependency Analyzer
 
 A Manifest V3 Chrome extension that discovers and categorizes the third-party
 domains a website depends on — built for internet-filter / allowlist management.
@@ -61,7 +61,7 @@ Build a clean zip that contains **only** the extension files (docs and tooling
 are excluded):
 
 ```sh
-./package.sh           # produces dist/depanalyzer-<version>.zip
+./package.sh           # produces dist/dependency-analyzer-<version>.zip
 ```
 
 Upload the resulting zip to the Web Store. Remember to: bump `version` in

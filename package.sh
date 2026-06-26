@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION=$(grep -m1 '"version"' manifest.json | sed -E 's/.*"version"[^"]*"([^"]+)".*/\1/')
-OUT="dist/depanalyzer-${VERSION}.zip"
+OUT="dist/dependency-analyzer-${VERSION}.zip"
 
 # Explicit allowlist of what ships — anything not listed here is excluded.
 FILES=(

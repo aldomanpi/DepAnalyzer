@@ -344,7 +344,7 @@ async function fetchDomainSummary(domain) {
   try {
     const resp = await fetch(`https://${domain}`, {
       signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DepAnalyzer/1.0)' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DependencyAnalyzer/1.0)' },
     });
     const text = await resp.text();
     const titleM = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
