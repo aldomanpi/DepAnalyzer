@@ -577,16 +577,20 @@ function buildNestedTable(items) {
   return table;
 }
 
-function buildSection(label, icon, items, isNoise, perHost = false) {
+// withHeader=false for the Generic/Noise sections, whose <details><summary>
+// already provides the heading (avoids a duplicated section title).
+function buildSection(label, icon, items, isNoise, perHost = false, withHeader = true) {
   const section = document.createElement('div');
   section.className = 'category-section' + (isNoise ? ' noise' : '');
-  const header = document.createElement('div');
-  header.className = 'category-header';
-  header.innerHTML = `
-    <span class="cat-icon">${icon}</span>
-    <span class="cat-label">${label}</span>
-    <span class="badge">${items.length}</span>`;
-  section.appendChild(header);
+  if (withHeader) {
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.innerHTML = `
+      <span class="cat-icon">${icon}</span>
+      <span class="cat-label">${label}</span>
+      <span class="badge">${items.length}</span>`;
+    section.appendChild(header);
+  }
   section.appendChild(perHost ? buildNestedTable(items) : buildTable(items));
   return section;
 }
@@ -613,14 +617,14 @@ function renderResults(data, perHost = false) {
 
   if (buckets.generic.length) {
     genericSects.appendChild(
-      buildSection(buckets.generic[0].label, CATEGORY_ICONS.generic, buckets.generic, false, perHost));
+      buildSection(buckets.generic[0].label, CATEGORY_ICONS.generic, buckets.generic, false, perHost, false));
   }
   genericBadge.textContent = buckets.generic.length;
   genericSection.classList.toggle('hidden', !buckets.generic.length);
 
   if (buckets.noise.length) {
     noiseSects.appendChild(
-      buildSection(buckets.noise[0].label, CATEGORY_ICONS.noise, buckets.noise, true, perHost));
+      buildSection(buckets.noise[0].label, CATEGORY_ICONS.noise, buckets.noise, true, perHost, false));
   }
   noiseBadge.textContent = buckets.noise.length;
 
