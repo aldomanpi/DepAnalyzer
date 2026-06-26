@@ -6,6 +6,7 @@
   const cacheFlash  = document.getElementById('cache-flash');
   const cacheStat   = document.getElementById('cache-size');
   const themeSelect = document.getElementById('theme-select');
+  const fontSelect  = document.getElementById('font-select');
 
   // ── Theme ──────────────────────────────────────────────────
   // Persisted in localStorage under 'theme' (shared with the popup, which
@@ -24,6 +25,19 @@
       localStorage.setItem('theme', value);
       applyTheme(value);
     }
+  });
+
+  // ── Font size / UI scale ───────────────────────────────────
+  // Persisted in localStorage under 'uiScale'; the popup reads it via
+  // theme-init.js. Applied live here via the --ui-scale CSS variable.
+  function applyScale(value) {
+    document.documentElement.style.setProperty('--ui-scale', value);
+  }
+  fontSelect.value = localStorage.getItem('uiScale') || '1';
+  applyScale(fontSelect.value);
+  fontSelect.addEventListener('change', () => {
+    localStorage.setItem('uiScale', fontSelect.value);
+    applyScale(fontSelect.value);
   });
 
   // Load saved key

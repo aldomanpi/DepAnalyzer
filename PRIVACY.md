@@ -62,7 +62,7 @@ The extension does **not** send data to any server operated by the developer.
   ("Clear cache").
 - **Capture data** — kept in session storage for the current browser session
   and cleared when the browser closes or when you click Clear.
-- **Theme preference** — stored in `localStorage`.
+- **Theme and font-size preferences** — stored in `localStorage`.
 
 None of this is transmitted anywhere except as described above.
 

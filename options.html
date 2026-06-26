@@ -30,6 +30,7 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px; background: var(--bg); color: var(--text); line-height: 1.5;
+      zoom: var(--ui-scale, 1);
     }
     .page { max-width: 540px; margin: 48px auto; padding: 0 24px 64px; }
     h1 { font-size: 20px; font-weight: 700; color: var(--text-heading); margin-bottom: 4px; }
@@ -139,7 +140,7 @@
 
     <div class="card">
       <h2>Appearance</h2>
-      <div class="field" style="margin-bottom:0;">
+      <div class="field">
         <label for="theme-select">Theme</label>
         <select id="theme-select">
           <option value="system">System default</option>
@@ -147,6 +148,16 @@
           <option value="dark">Dark</option>
         </select>
         <span class="hint">Applies to the popup and this settings page.</span>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="font-select">Font size</label>
+        <select id="font-select">
+          <option value="0.9">Small</option>
+          <option value="1">Default</option>
+          <option value="1.1">Large</option>
+          <option value="1.2">Extra large</option>
+        </select>
+        <span class="hint">Scales the popup (and this page) text and layout.</span>
       </div>
     </div>
 
