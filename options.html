@@ -170,12 +170,13 @@
     <div class="card">
       <h2>Classification Cache</h2>
       <p style="font-size:13px;color:var(--text-3);margin-bottom:14px;">
-        Classified domains are cached locally for 90 days so they aren't re-sent
-        to the AI; after that they're automatically re-checked. Clear the cache
-        to force a fresh classification.
+        Classifications are cached locally per site for 90 days so they aren't
+        re-sent to the AI; after that they're automatically re-checked. Caching
+        per site means a domain can be classified differently depending on the
+        page it appears on. Clear the cache to force fresh classifications.
       </p>
       <div class="cache-row">
-        <span class="cache-stat">Cached domains: <strong id="cache-size">…</strong></span>
+        <span class="cache-stat">Cached entries: <strong id="cache-size">…</strong></span>
         <button class="btn btn-danger" id="clear-cache">Clear cache</button>
       </div>
       <div class="flash" id="cache-flash"></div>

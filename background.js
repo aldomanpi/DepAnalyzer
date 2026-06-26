@@ -260,10 +260,18 @@ async function getApiKey() {
 // changes purpose doesn't stay misclassified forever.
 const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
-// Versioned cache key. Bumped when category semantics change so stale entries
-// aren't reused. Superseded keys are dropped on startup to reclaim space.
-const CACHE_KEY = 'domainCache_v3';
-chrome.storage.local.remove(['domainCache', 'domainCache_v2']).catch(() => {});
+// Versioned cache key. Bumped when category semantics or the key shape change
+// so stale entries aren't reused. Superseded keys are dropped on startup.
+const CACHE_KEY = 'domainCache_v4';
+chrome.storage.local.remove(['domainCache', 'domainCache_v2', 'domainCache_v3']).catch(() => {});
+
+// Cache entries are scoped to the analyzed site, because a domain's category
+// depends on the target context — e.g. redditstatic.com is a generic CDN on
+// most sites but served an ads pixel on one. Keying by (target, domain) keeps
+// a verdict from one site from leaking onto every other site.
+function cacheKey(target, domain) {
+  return `${target || ''}\n${domain}`;
+}
 
 async function getCache() {
   const { [CACHE_KEY]: cache } = await chrome.storage.local.get(CACHE_KEY);
@@ -276,11 +284,11 @@ function isStale(entry) {
   return !!entry?.ts && (Date.now() - entry.ts) > CACHE_TTL_MS;
 }
 
-async function saveToCache(entries) {
+async function saveToCache(target, entries) {
   const cache = await getCache();
   const ts = Date.now();
   for (const { domain, category, impact } of entries) {
-    cache[domain] = { category, impact, ts };
+    cache[cacheKey(target, domain)] = { category, impact, ts };
   }
   await chrome.storage.local.set({ [CACHE_KEY]: cache });
 }
@@ -449,11 +457,15 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   const isTargetParty = d =>
     !!targetRegistered && (d === targetRegistered || getRegisteredDomain(d) === targetRegistered);
 
+  // Cache is scoped to this target site, so a verdict from another site (where
+  // the same domain may serve a different purpose) is never reused here.
+  const ck = d => cacheKey(targetRegistered, d);
+
   const allDomains = Object.keys(domainMap);
   const thirdParty = allDomains.filter(d => !isTargetParty(d));
-  // Cache hit only if present AND not past its TTL — stale entries get refreshed.
-  const cached   = thirdParty.filter(d =>  (d in cache) && !isStale(cache[d]));
-  const uncached = thirdParty.filter(d => !(d in cache) ||  isStale(cache[d]));
+  // Cache hit only if present for THIS site AND not past its TTL.
+  const cached   = thirdParty.filter(d => cache[ck(d)] && !isStale(cache[ck(d)]));
+  const uncached = thirdParty.filter(d => !cache[ck(d)] || isStale(cache[ck(d)]));
 
   if (!uncached.length) {
     sendProgress(tabId, `All ${cached.length} domain(s) found in cache…`);
@@ -467,12 +479,13 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   if (uncached.length) {
     aiResults = await classifyWithAI(uncached, targetUrl, targetRegistered, apiKey, tabId, signal);
     await saveToCache(
+      targetRegistered,
       Object.entries(aiResults).map(([domain, { category, impact }]) => ({ domain, category, impact })),
     );
   }
 
   const allCats = {
-    ...Object.fromEntries(cached.map(d => [d, cache[d]])),
+    ...Object.fromEntries(cached.map(d => [d, cache[ck(d)]])),
     ...aiResults,
   };
 
