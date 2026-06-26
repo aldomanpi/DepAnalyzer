@@ -19,7 +19,9 @@ Critical rules:
 1. Classify by what the service IS and how widely it is used across the web, not by who integrated it or which site is being analyzed. A payment gateway like Braintree or Apple Pay is generic on every site that uses it.
 2. generic vs specific: if the SERVICE is a recognizable third-party provider used across many websites (payments, auth, CDNs, fonts, maps, captcha, embeds), choose generic. Choose specific only for the site's own infrastructure or a niche dependency particular to this site.
 3. Performance monitoring, RUM, and analytics are noise even when the data is described as "specific to this site."
-4. When genuinely uncertain between specific and noise, choose specific — treat it as a needed dependency rather than risk breaking the site.`;
+4. When genuinely uncertain between specific and noise, choose specific — treat it as a needed dependency rather than risk breaking the site.
+5. Some domains include an "observed paths" line listing what they actually served on the analyzed page (query strings removed). Use it: paths like /static/app.js, /assets/img.png, /fonts/…, or an API/data endpoint indicate a functional role; paths like /ads/pixel.js, /collect, /track, /beacon, /b/ss indicate tracking.
+6. A domain often serves more than one purpose. Classify it by its MOST functional role: if ANY of its requests deliver functional content the page uses (scripts, styles, images, media, fonts, or API/data), classify the whole domain as functional (generic or specific), even if other requests are ads or tracking. Choose noise ONLY when every observed request is optional tracking/advertising with no functional content.`;
 
 const CLASSIFY_TOOL = {
   name: 'classify_domains',
@@ -352,8 +354,22 @@ async function fetchDomainSummary(domain) {
 // into batches to avoid silently dropping domains.
 const CLASSIFY_BATCH_SIZE = 40;
 
+// Distinct request pathnames a domain served (query strings stripped for
+// privacy), capped so the prompt stays bounded. Gives the model the signal it
+// needs to judge a domain's role on this page (e.g. /ads/pixel.js vs /app.js).
+function samplePaths(urls, max = 8) {
+  const seen = new Set();
+  for (const u of urls || []) {
+    try {
+      seen.add(new URL(u).pathname || '/');
+      if (seen.size >= max) break;
+    } catch {}
+  }
+  return [...seen];
+}
+
 // --- AI classification (batched API calls with pre-fetched summaries) ---
-async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabId, signal) {
+async function classifyWithAI(domains, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, signal) {
   if (!domains.length) return {};
 
   const out = {};
@@ -364,12 +380,12 @@ async function classifyWithAI(domains, targetUrl, targetRegistered, apiKey, tabI
     const range = total > CLASSIFY_BATCH_SIZE
       ? ` (${i + 1}–${Math.min(i + batch.length, total)} of ${total})`
       : '';
-    Object.assign(out, await classifyBatch(batch, targetUrl, targetRegistered, apiKey, tabId, range, signal));
+    Object.assign(out, await classifyBatch(batch, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, range, signal));
   }
   return out;
 }
 
-async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId, range = '', signal) {
+async function classifyBatch(domains, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, range = '', signal) {
   // Fetch all summaries in parallel — free, no AI tokens consumed
   sendProgress(tabId, `Looking up ${domains.length} domain(s)${range}…`);
   const settled = await Promise.allSettled(
@@ -380,7 +396,10 @@ async function classifyBatch(domains, targetUrl, targetRegistered, apiKey, tabId
     if (r.status === 'rejected') return null;
     const { domain, summary } = r.value;
     const brief = (summary || '').replace(/\s+/g, ' ').slice(0, 250);
-    return brief ? `- ${domain}: ${brief}` : `- ${domain}`;
+    const paths = (pathsByDomain && pathsByDomain[domain]) || [];
+    let line = brief ? `- ${domain}: ${brief}` : `- ${domain}`;
+    if (paths.length) line += `\n    observed paths: ${paths.join(', ')}`;
+    return line;
   }).filter(Boolean).join('\n') || domains.map(d => `- ${d}`).join('\n');
 
   const targetHint = targetRegistered
@@ -496,7 +515,11 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
 
   let aiResults = {};
   if (uncached.length) {
-    aiResults = await classifyWithAI(uncached, targetUrl, targetRegistered, apiKey, tabId, signal);
+    // Give the model what each domain actually served on this page so it can
+    // judge role (and bump a mixed-purpose domain up to its functional category).
+    const pathsByDomain = {};
+    for (const d of uncached) pathsByDomain[d] = samplePaths(domainMap[d]?.urls);
+    aiResults = await classifyWithAI(uncached, pathsByDomain, targetUrl, targetRegistered, apiKey, tabId, signal);
     await saveToCache(
       targetRegistered,
       Object.entries(aiResults).map(([domain, { category, impact }]) => ({ domain, category, impact })),

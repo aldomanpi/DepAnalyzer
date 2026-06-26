@@ -45,12 +45,12 @@ categories:
 ## Privacy
 
 The extension has **no developer-operated backend** and collects no analytics.
-When you run an analysis it sends **domain names only** to the Anthropic API
-(with your key) and to DuckDuckGo (for short descriptions). It also fetches the
-**public homepage of each newly-analyzed domain directly** to read its title and
-meta description — meaning your browser connects to those domains from your IP.
-No cookies/credentials are sent and results are cached so each domain is
-contacted at most once.
+When you run an analysis it sends **domain names plus a small sample of the
+request paths they served** (query strings removed — e.g. `/ads/pixel.js`) to
+the Anthropic API (with your key), and domain names to DuckDuckGo (for short
+descriptions). It also fetches the **public homepage of each newly-analyzed
+domain directly** to read its title and meta description — meaning your browser
+connects to those domains from your IP. No cookies/credentials are sent.
 
 Full details: [PRIVACY.md](./PRIVACY.md). You must host this policy at a public
 URL and link it in your Web Store listing.
