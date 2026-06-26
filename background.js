@@ -262,15 +262,18 @@ const CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 // Versioned cache key. Bumped when category semantics or the key shape change
 // so stale entries aren't reused. Superseded keys are dropped on startup.
-const CACHE_KEY = 'domainCache_v4';
-chrome.storage.local.remove(['domainCache', 'domainCache_v2', 'domainCache_v3']).catch(() => {});
+const CACHE_KEY = 'domainCache_v5';
+chrome.storage.local.remove(
+  ['domainCache', 'domainCache_v2', 'domainCache_v3', 'domainCache_v4']).catch(() => {});
 
-// Cache entries are scoped to the analyzed site, because a domain's category
-// depends on the target context — e.g. redditstatic.com is a generic CDN on
-// most sites but served an ads pixel on one. Keying by (target, domain) keeps
-// a verdict from one site from leaking onto every other site.
-function cacheKey(target, domain) {
-  return `${target || ''}\n${domain}`;
+// Cache scope rule: a `generic` verdict means "ubiquitous, the same on every
+// site", so it is cached GLOBALLY and reused everywhere (e.g. gstatic.com).
+// `specific`/`noise` verdicts are context-dependent (e.g. redditstatic.com is
+// a CDN on one page but an ads pixel on another), so they are cached per-site.
+// '*' is a reserved scope token — real registered domains never equal it.
+const GLOBAL_SCOPE = '*';
+function cacheKey(scope, domain) {
+  return `${scope || ''}\n${domain}`;
 }
 
 async function getCache() {
@@ -288,7 +291,9 @@ async function saveToCache(target, entries) {
   const cache = await getCache();
   const ts = Date.now();
   for (const { domain, category, impact } of entries) {
-    cache[cacheKey(target, domain)] = { category, impact, ts };
+    // generic is site-independent → global scope; everything else → per-site.
+    const scope = category === 'generic' ? GLOBAL_SCOPE : target;
+    cache[cacheKey(scope, domain)] = { category, impact, ts };
   }
   await chrome.storage.local.set({ [CACHE_KEY]: cache });
 }
@@ -457,15 +462,21 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   const isTargetParty = d =>
     !!targetRegistered && (d === targetRegistered || getRegisteredDomain(d) === targetRegistered);
 
-  // Cache is scoped to this target site, so a verdict from another site (where
-  // the same domain may serve a different purpose) is never reused here.
-  const ck = d => cacheKey(targetRegistered, d);
+  // Resolve a domain's cached verdict: a global 'generic' entry applies on
+  // every site and wins; otherwise fall back to a per-site entry. Stale
+  // entries (past TTL) are ignored so they get refreshed.
+  const lookup = d => {
+    const g = cache[cacheKey(GLOBAL_SCOPE, d)];
+    if (g && !isStale(g)) return g;
+    const s = cache[cacheKey(targetRegistered, d)];
+    if (s && !isStale(s)) return s;
+    return null;
+  };
 
   const allDomains = Object.keys(domainMap);
   const thirdParty = allDomains.filter(d => !isTargetParty(d));
-  // Cache hit only if present for THIS site AND not past its TTL.
-  const cached   = thirdParty.filter(d => cache[ck(d)] && !isStale(cache[ck(d)]));
-  const uncached = thirdParty.filter(d => !cache[ck(d)] || isStale(cache[ck(d)]));
+  const cached   = thirdParty.filter(d =>  lookup(d));
+  const uncached = thirdParty.filter(d => !lookup(d));
 
   if (!uncached.length) {
     sendProgress(tabId, `All ${cached.length} domain(s) found in cache…`);
@@ -485,7 +496,7 @@ async function classify(domainMap, targetUrl, tabId, providedTargetRegistered = 
   }
 
   const allCats = {
-    ...Object.fromEntries(cached.map(d => [d, cache[ck(d)]])),
+    ...Object.fromEntries(cached.map(d => [d, lookup(d)])),
     ...aiResults,
   };
 
